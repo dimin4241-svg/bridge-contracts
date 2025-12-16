@@ -58,7 +58,7 @@ bridge-contracts/
 │   │   ├── main/           # Production contracts
 │   └── test/               # TypeScript tests
 └── docs/                   # Tron network contracts
-    ├── README.md           # Whitechain Bridge high-level overview
+    └──  README.md          # Whitechain Bridge high-level overview
 ```
 
 ## Key Features

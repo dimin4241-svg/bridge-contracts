@@ -63,10 +63,7 @@ const config: HardhatUserConfig = {
     enabled: false
   },
   etherscan: {
-    apiKey: {
-      mainnet: process.env.MAINNET_API_KEY || '',
-      sepolia: process.env.SEPOLIA_API_KEY || '',
-    },
+    apiKey: process.env.MAINNET_API_KEY || process.env.SEPOLIA_API_KEY || '',
     customChains: [
       {
         network: "whitechain",

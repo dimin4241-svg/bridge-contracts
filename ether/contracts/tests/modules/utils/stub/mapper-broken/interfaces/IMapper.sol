@@ -35,6 +35,16 @@ interface IMapper {
     }
 
     /**
+     * @notice Struct for initializing the Mapper contract.
+     * @param emergencyAddress The address of the emergency role.
+     * @param multisigAddress The address of the multisig role.
+     */
+    struct InitParams {
+        address emergencyAddress;
+        address multisigAddress;
+    }
+
+    /**
      * @notice Struct containing detailed information about a token mapping.
      * Stores metadata for cross-chain token bridging.
      * @param originChainId The ID of the origin chain.

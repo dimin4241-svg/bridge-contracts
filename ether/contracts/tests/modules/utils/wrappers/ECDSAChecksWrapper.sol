@@ -16,11 +16,11 @@ contract ECDSAChecksWrapper {
     using ECDSAChecks for ECDSAChecks.ECDSAParams;
 
     /**
-     * @notice Validates an ECDSA signature using parameters provided in the struct.
-     * @param params The ECDSA parameters including message, signature, and signer address.
-     * @return isValid Boolean indicating whether the signature is valid.
+     * @notice Recovers the signer address from an ECDSA signature.
+     * @param params A struct containing the signature parameters.
+     * @return signer The address of the signer.
      */
-    function validateECDSAWrapper(ECDSAChecks.ECDSAParams calldata params) external view returns (bool isValid) {
-        return params.validate();
+    function recoverSignerWrapper(ECDSAChecks.ECDSAParams calldata params) external pure returns (address signer) {
+        return ECDSAChecks.recoverSigner(params);
     }
 }

@@ -12,15 +12,19 @@ contract("Bridge", (accounts) => {
     let newMapInfo;
     const tronWeb = new TronWeb({ fullHost: tronConfig.networks.nile.fullHost });
 
-    const OWNER_ADDRESS = process.env[`NILE_OWNER_ADDRESS`] || "";
+    const EMERGENCY_ADDRESS = process.env[`NILE_EMERGENCY_ADDRESS`] || "";
+    const MULTISIG_ADDRESS = process.env[`NILE_MULTISIG_ADDRESS`] || "";
+    const RELAYER_ADDRESS = process.env[`NILE_RELAYER_ADDRESS`] || "";
     const BRIDGE_ADDRESS = process.env[`NILE_BRIDGE_ADDRESS`] || "";
     const MAPPER_ADDRESS = process.env[`NILE_MAPPER_ADDRESS`] || "";
 
 
     if (!BRIDGE_ADDRESS || BRIDGE_ADDRESS.trim() === "" ||
-        !OWNER_ADDRESS || OWNER_ADDRESS.trim() === "" ||
+        !EMERGENCY_ADDRESS || EMERGENCY_ADDRESS.trim() === "" ||
+        !MULTISIG_ADDRESS || MULTISIG_ADDRESS.trim() === "" ||
+        !RELAYER_ADDRESS || RELAYER_ADDRESS.trim() === "" ||
         !MAPPER_ADDRESS || MAPPER_ADDRESS.trim() === "") {
-        throw new Error('Environment variable BRIDGE_ADDRESS || MAPPER_ADDRESS || OWNER_ADDRESS is not set or empty');
+        throw new Error('Environment variable BRIDGE_ADDRESS || MAPPER_ADDRESS || EMERGENCY_ADDRESS || MULTISIG_ADDRESS || RELAYER_ADDRESS is not set or empty');
     }
 
     before(async () => {
@@ -31,10 +35,22 @@ contract("Bridge", (accounts) => {
 
     describe("Deployment", function () {
 
-        it("should return correct owner", async () => {
-            const ownerAddress = await BridgeContract.owner();
+        it("should check MULTISIG_ROLE", async () => {
+            const multisigAddress = await BridgeContract.hasRole(await BridgeContract.MULTISIG_ROLE(), MULTISIG_ADDRESS);
 
-            assert.equal(tronWeb.address.fromHex(ownerAddress), OWNER_ADDRESS, "Owner mismatch");
+            assert.equal(multisigAddress, true, "Multisig address mismatch");
+        });
+
+        it("should check EMERGENCY_ROLE", async () => {
+            const emergencyAddress = await BridgeContract.hasRole(await BridgeContract.EMERGENCY_ROLE(), EMERGENCY_ADDRESS);
+
+            assert.equal(emergencyAddress, true, "Emergency address mismatch");
+        });
+
+        it("should check RELAYER_ROLE", async () => {
+            const relayerAddress = await BridgeContract.hasRole(await BridgeContract.RELAYER_ROLE(), RELAYER_ADDRESS);
+
+            assert.equal(relayerAddress, true, "Relayer address mismatch");
         });
 
     });
@@ -58,12 +74,12 @@ contract("Bridge", (accounts) => {
             let amount = 99999;
             const mapId = await MapperContract.withdrawAllowedTokens(newMapInfo[0], newMapInfo[5]);
 
-            const receiveTokensTransaction = await BridgeContract.receiveTokens([
+            await BridgeContract.receiveTokens([
                 externalId,
                 mapId[0],
                 amount,
-                utils.toBytes32(OWNER_ADDRESS),
-                utils.toBytes32(OWNER_ADDRESS)
+                utils.toBytes32(RELAYER_ADDRESS),
+                utils.toBytes32(RELAYER_ADDRESS)
             ]);
         });
 

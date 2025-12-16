@@ -11,9 +11,15 @@ interface IBridge {
     /**
      * @notice Struct for initializing the Bridge contract.
      * @param mapperAddress The address of the Mapper contract used for token mapping.
+     * @param emergencyAddress The address of the emergency role.
+     * @param multisigAddress The address of the multisig role.
+     * @param relayerAddress The address of the relayer role.
      */
     struct InitParams {
         address mapperAddress;
+        address emergencyAddress;
+        address multisigAddress;
+        address relayerAddress;
     }
 
     /**
@@ -98,6 +104,17 @@ interface IBridge {
     }
 
     /**
+     * @notice Struct to track daily volumes for a token/relayer combination.
+     * Reuses the same storage slot by overwriting previous day's data when a new day starts.
+     * @param dayStartTimestamp The timestamp when the 24-hour window started. 0 if not initialized.
+     * @param dayVolume Volume for the current day. Reset to 0 when 24 hours have passed.
+     */
+    struct DailyVolumeTracker {
+        uint256 dayStartTimestamp;
+        uint256 dayVolume;
+    }
+
+    /**
      * @notice Emitted when tokens are deposited into the bridge.
      * Triggered in the `bridgeTokens` function upon a successful deposit.
      * @param fromAddress The sender's address on the origin chain.
@@ -151,14 +168,14 @@ interface IBridge {
     event MapperAddressChanged(address indexed account, address indexed oldAddress, address indexed newAddress);
 
     /**
-     * @notice Emitted when the owner withdraws accumulated gas funds.
+     * @notice Emitted when the EMERGENCY address withdraws accumulated gas funds.
      * @param account The address that received the funds.
      * @param amount The amount of gas funds withdrawn.
      */
     event GasAccumulatedWithdrawn(address indexed account, uint256 indexed amount);
 
     /**
-     * @notice Emitted when the owner withdraws liquidity from the contract.
+     * @notice Emitted when the MULTISIG address withdraws liquidity from the contract.
      * @param account The address that received the funds.
      * @param token The token address.
      * @param amount The amount of funds withdrawn.
@@ -174,7 +191,7 @@ interface IBridge {
     );
 
     /**
-     * @notice Emitted when the owner withdraws liquidity from the contract.
+     * @notice Emitted when the EMERGENCY address withdraws liquidity from the contract.
      * @param account The address that received the funds.
      * @param amount The amount of funds withdrawn.
      */
@@ -196,6 +213,15 @@ interface IBridge {
     event CoinsDeposited(address indexed account, uint256 indexed amount);
 
     /**
+     * @notice Emitted when a daily limit is set or updated.
+     * @param token The token address (bytes32). bytes32(0) for native coin.
+     * @param relayer The relayer address.
+     * @param newLimit The new daily limit.
+     * @param oldLimit The previous daily limit.
+     */
+    event DailyLimitSet(bytes32 indexed token, address indexed relayer, uint256 indexed newLimit, uint256 oldLimit);
+
+    /**
      * @notice Deposits tokens into the bridge contract.
      * This function locks or burns tokens depending on the bridging mechanism.
      * @param bridgeTokensParams The struct containing parameters for the bridging process.
@@ -205,15 +231,15 @@ interface IBridge {
     /**
      * @notice Receives tokens from the bridge contract.
      * This function unlocks or mints tokens depending on the withdrawal mechanism.
-     * Only the contract owner can call this function.
+     * Only the address with RELAYER role can call this function.
      * @param receiveTokensParams The struct containing parameters for the receiving process.
      */
     function receiveTokens(ReceiveTokensParams calldata receiveTokensParams) external;
 
     /**
-     * @notice Withdraws accumulated gas compensation funds to the contract owner.
-     * Transfers the entire gasAccumulated balance to the owner and resets the counter.
-     * Only the contract owner can call this function.
+     * @notice Withdraws accumulated gas compensation funds to the EMERGENCY address.
+     * Transfers the entire gasAccumulated balance to the EMERGENCY address and resets the counter.
+     * Only the address with EMERGENCY role can call this function.
      * Emits a {GasAccumulatedWithdrawn} event on success.
      */
     function withdrawGasAccumulated() external;
@@ -221,7 +247,7 @@ interface IBridge {
     /**
      * @notice Withdraws token liquidity from the contract to the withdrawRecipient.
      * Transfers the balance held by the contract to the withdrawRecipient.
-     * Only the contract owner can call this function.
+     * Only the address with MULTISIG role can call this function.
      * @param withdrawTokenLiquidityParams The struct containing parameters for the withdraw process.
      */
     function withdrawTokenLiquidity(WithdrawTokenLiquidityParams calldata withdrawTokenLiquidityParams) external;
@@ -229,8 +255,17 @@ interface IBridge {
     /**
      * @notice Withdraws coin liquidity from the contract to the withdrawRecipient.
      * Transfers the balance held by the contract to the withdrawRecipient.
-     * Only the contract owner can call this function.
+     * Only the address with EMERGENCY role can call this function.
      * @param withdrawCoinLiquidityParams The struct containing parameters for the withdraw process.
      */
     function withdrawCoinLiquidity(WithdrawCoinLiquidityParams calldata withdrawCoinLiquidityParams) external;
+
+    /**
+     * @notice Sets or updates the daily limit for a specific token and relayer.
+     * Only the address with MULTISIG role can call this function.
+     * @param tokenAddress The token address (bytes32). Use bytes32(0) for native coin.
+     * @param relayer The relayer address.
+     * @param limit The daily limit amount.
+     */
+    function setDailyLimit(bytes32 tokenAddress, address relayer, uint256 limit) external;
 }

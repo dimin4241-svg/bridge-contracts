@@ -15,6 +15,7 @@ describe("BridgeDeployed", function () {
   let BridgeContract: any;
 
   let deployer: any;
+  let relayerAddress: any;
 
   beforeEach(async function () {
     if (hre.network.name === "hardhat") {
@@ -32,6 +33,9 @@ describe("BridgeDeployed", function () {
       const MAPPER_ADDRESS: string = process.env[`${hre.network.name.toUpperCase()}_MAPPER_ADDRESS`] || "";
       MapperContract = await hre.ethers.getContractAt("contracts/main/modules/mapper/Mapper.sol:Mapper", MAPPER_ADDRESS);
 
+      const RELAYER_ADDRESS: string = process.env[`${hre.network.name.toUpperCase()}_RELAYER_ADDRESS`] || "";
+      relayerAddress = hre.ethers.getAddress(RELAYER_ADDRESS);
+
       const BRIDGE_ADDRESS: string = process.env[`${hre.network.name.toUpperCase()}_BRIDGE_ADDRESS`] || "";
       BridgeContract = await hre.ethers.getContractAt(GlobalConfig.BRIDGE_CONTRACT_NAME, BRIDGE_ADDRESS);
 
@@ -41,25 +45,31 @@ describe("BridgeDeployed", function () {
   });
 
     async function ECDSAFixture(
-        add = deployer.address,
-        bridgeParams: IBridge.BridgeParams,
+        bridgeParams: {
+          bridgeParams: IBridge.BridgeParams;
+          gasAmount: bigint;
+        },
         _mapperContract = MapperContract
     ): Promise<IBridge.ECDSAParams> {
       //const _deadline: bigint = BigInt(await time.latest()) + BigInt(3600);
+      //const _salt: bigint = BigInt(await time.latest()) + BigInt(3600);
       const _deadline: bigint = BigInt(Math.floor(Date.now() / 1000)) + BigInt(3600);
-      let mapInfo: IMapper.MapInfo = await _mapperContract.mapInfo(bridgeParams.mapId);
+      const _salt: bigint = BigInt(Math.floor(Date.now() / 1000)) + BigInt(3600);
+      const _saltHex = hre.ethers.toBeHex(_salt, 32);
+      let mapInfo: IMapper.MapInfo = await _mapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
       const message = hre.ethers.solidityPackedKeccak256(
-          ["address", "address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64"],
+          ["address", "address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64", "bytes32"],
           [
-            deployer.address,
-            add,
-            hre.ethers.zeroPadValue(bridgeParams.toAddress, 32),
+            relayerAddress,
+            relayerAddress,
+            hre.ethers.zeroPadValue(bridgeParams.bridgeParams.toAddress, 32),
             mapInfo.targetTokenAddress,
             bridgeParams.gasAmount,
-            bridgeParams.amount,
+            bridgeParams.bridgeParams.amount,
             mapInfo.originChainId,
             mapInfo.targetChainId,
-            _deadline
+            _deadline,
+            _saltHex
           ],
       );
       const messageBuffer = Buffer.from(message.slice(2), "hex");
@@ -70,7 +80,7 @@ describe("BridgeDeployed", function () {
       const r = `0x${signature.r.toString("hex")}`;
       const s = `0x${signature.s.toString("hex")}`;
 
-      return ({r, s, deadline: _deadline, v});
+      return ({r, s, salt: _saltHex, deadline: _deadline, v});
     }
 
   describe("bridgeTokens", async function () {

@@ -14,8 +14,6 @@ describe("Mapper", function () {
 
   let IS_LOCALHOST = true;
   let MapperContract: any;
-  let MapperFactory: any;
-  let initializeMapperContract: any;
   let Token0: any;
   let Token1: any;
   let Token2: any;
@@ -23,12 +21,15 @@ describe("Mapper", function () {
   let Token4: any;
   let newMapInfo: IMapper.MapInfo;
 
+  let initParams: IMapper.InitParams;
+
   let deployer: SignerWithAddress;
-  let user0: SignerWithAddress;
+  let emergencyAddress: SignerWithAddress;
+  let multisigAddress: SignerWithAddress;
   let user1: SignerWithAddress;
-  let user2: SignerWithAddress;
-  let user3: SignerWithAddress;
-  let user4: SignerWithAddress;
+
+  const EMERGENCY_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("EMERGENCY_ROLE"));
+  const MULTISIG_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("MULTISIG_ROLE"));
 
   const MAP_ID_1 = 1;
   const MAP_ID_2 = 2;
@@ -40,11 +41,9 @@ describe("Mapper", function () {
     const accounts = await hre.ethers.getSigners();
 
     deployer = accounts[0];
-    user0 = accounts[1];
-    user1 = accounts[2];
-    user2 = accounts[3];
-    user3 = accounts[4];
-    user4 = accounts[4];
+    emergencyAddress = accounts[1];
+    multisigAddress = accounts[2];
+    user1 = accounts[3];
 
     Token0 = await deployExampleToken();
     Token1 = await deployExampleToken();
@@ -52,16 +51,20 @@ describe("Mapper", function () {
     Token3 = await deployExampleToken();
     Token4 = await deployExampleToken();
 
-    const {contract, contractFactory, initialize} = await coreDeployment.deployUUPSProxy(
+    initParams = {
+      emergencyAddress: emergencyAddress.address,
+      multisigAddress: multisigAddress.address
+    };
+
+    const {contract} = await coreDeployment.deployUUPSProxy(
         IS_LOCALHOST,
         GlobalConfig.MAIN_UTILS_ROUTE + "mapper/" + GlobalConfig.MAPPER_CONTRACT_NAME + ".sol:" + GlobalConfig.MAPPER_CONTRACT_NAME,
         deployer,
-        {}
+        'initialize',
+        initParams
     );
 
     MapperContract = contract as unknown as Mapper;
-    MapperFactory = contractFactory;
-    initializeMapperContract = initialize;
 
     newMapInfo = await setMapInfo(0);
   });
@@ -97,7 +100,7 @@ describe("Mapper", function () {
     for (let mapId = 0; mapId < 5; ++mapId) {
       let mapInfo = await setMapInfo(mapId);
 
-      const registerMappingTransaction = await MapperContract.registerMapping(mapInfo);
+      const registerMappingTransaction = await MapperContract.connect(multisigAddress).registerMapping(mapInfo);
       expect(registerMappingTransaction).to.not.be.reverted;
 
     }
@@ -113,7 +116,7 @@ describe("Mapper", function () {
           await hre.ethers.getContractFactory(GlobalConfig.MAPPER_TEST_CONTRACT_NAME);
       const contract = await hre.upgrades.upgradeProxy(
           MapperContract.target,
-          MapperTest.connect(deployer)
+          MapperTest.connect(multisigAddress)
       );
       let UpgradedMapper = contract as unknown as MapperTest;
       await expect(UpgradedMapper).to.not.be.reverted;
@@ -122,7 +125,7 @@ describe("Mapper", function () {
       ).to.be.equal(0);
     });
 
-    it("Unable to _authorizeUpgrade without Ownable", async function () {
+    it("Unable to _authorizeUpgrade without Multisig role", async function () {
       const MapperTest =
           await hre.ethers.getContractFactory(GlobalConfig.MAPPER_TEST_CONTRACT_NAME);
       await expect(
@@ -130,25 +133,29 @@ describe("Mapper", function () {
               MapperContract.target,
               MapperTest.connect(user1)
           ),
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
     });
   });
 
   describe("Initialize", function () {
     it("Cannot re-initialize Mapper contract", async function () {
       await expect(
-          MapperContract.initialize({}),
+          MapperContract.initialize(initParams),
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
 
-    it("The owner must be deployer", async function () {
-      expect(await MapperContract.owner()).to.be.equal(deployer.address);
+    it("The Multisig address must be defined", async function () {
+      expect(await MapperContract.hasRole(MULTISIG_ROLE, multisigAddress.address)).to.be.equal(true);
+    });
+
+    it("The Emergency address must be defined", async function () {
+      expect(await MapperContract.hasRole(EMERGENCY_ROLE, emergencyAddress.address)).to.be.equal(true);
     });
   });
 
   describe("registerMapping", async function () {
     it("Should be able to registerMapping", async function () {
-      const registerMappingTransaction = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction).to.not.be.reverted;
 
       let mapCounter = await MapperContract.mapCounter();
@@ -169,41 +176,39 @@ describe("Mapper", function () {
 
     });
 
-    it("Should fail registerMapping if sender is NOT Owner", async function () {
+    it("Should fail registerMapping if sender has NOT Multisig role", async function () {
       await expect(
           MapperContract.connect(user1).registerMapping(newMapInfo)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
     });
 
     it("Should fail to registerMapping with zero originTokenAddress", async function () {
       newMapInfo.originTokenAddress = hre.ethers.zeroPadValue(ZeroAddress, 32);
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: Bytes must be not equal zero");
     });
 
     it("Should fail to registerMapping with zero targetTokenAddress", async function () {
       newMapInfo.targetTokenAddress = hre.ethers.zeroPadValue(ZeroAddress, 32);
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: Bytes must be not equal zero");
     });
 
     it("Should fail to registerMapping with newMapInfo.originChainId NOT equal block.chainid", async function () {
-      let oldOriginChainId = newMapInfo.originChainId;
       newMapInfo.originChainId = BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID);
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: ChainId must be equal to originChainId");
     });
 
     it("Should fail to registerMapping with newMapInfo.targetChainId NOT equal block.chainid", async function () {
-      let oldOriginChainId = newMapInfo.originChainId;
       newMapInfo.targetChainId = BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID);
       newMapInfo.depositType = IMapper.DepositType.None;
       newMapInfo.withdrawType = IMapper.WithdrawType.Unlock;
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: ChainId must be equal to targetChainId");
     });
 
@@ -211,22 +216,17 @@ describe("Mapper", function () {
       newMapInfo.depositType = IMapper.DepositType.None;
       newMapInfo.withdrawType = IMapper.WithdrawType.None;
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: Invalid map types");
     });
 
     it("Should fail to registerMapping where tokenStorage is busy", async function () {
 
-      const registerMappingTransaction = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction).to.not.be.reverted;
 
-      let _tokenStorage = await MapperContract.depositAllowedTokens(
-          newMapInfo.targetChainId,
-          newMapInfo.originTokenAddress
-      );
-
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: MapId must be equal to 0");
 
       newMapInfo.depositType = IMapper.DepositType.None;
@@ -235,11 +235,11 @@ describe("Mapper", function () {
       let originChainId = newMapInfo.originChainId;
       newMapInfo.targetChainId = originChainId;
       newMapInfo.originChainId = targetChainId;
-      const registerMappingTransaction2 = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction2 = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction2).to.not.be.reverted;
 
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: MapId must be equal to 0");
 
       const mapCounter = await MapperContract.mapCounter();
@@ -252,11 +252,11 @@ describe("Mapper", function () {
       newMapInfo.depositType = IMapper.DepositType.Burn;
       newMapInfo.withdrawType = IMapper.WithdrawType.None;
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: DepositType must be equal to Lock");
 
       newMapInfo.depositType = IMapper.DepositType.Lock;
-      const registerMappingTransaction2 = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction2 = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction2).to.not.be.reverted;
     });
 
@@ -269,11 +269,11 @@ describe("Mapper", function () {
       newMapInfo.targetChainId = originChainId;
       newMapInfo.originChainId = targetChainId;
       await expect(
-          MapperContract.registerMapping(newMapInfo)
+          MapperContract.connect(multisigAddress).registerMapping(newMapInfo)
       ).to.be.revertedWith("Mapper: WithdrawType must be equal to Unlock");
 
       newMapInfo.withdrawType = IMapper.WithdrawType.Unlock;
-      const registerMappingTransaction2 = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction2 = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction2).to.not.be.reverted;
     });
 
@@ -285,7 +285,7 @@ describe("Mapper", function () {
       let originChainId = newMapInfo.originChainId;
       newMapInfo.targetChainId = originChainId;
       newMapInfo.originChainId = targetChainId;
-      const registerMappingTransaction2 = await MapperContract.registerMapping(newMapInfo);
+      const registerMappingTransaction2 = await MapperContract.connect(multisigAddress).registerMapping(newMapInfo);
       expect(registerMappingTransaction2).to.not.be.reverted;
     });
 
@@ -299,7 +299,7 @@ describe("Mapper", function () {
       let oldMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
       expect(oldMapInfo.isAllowed).to.be.equal(expectedAllowedBefore);
 
-      const enableMappingTransaction = await MapperContract.enableMapping(mapId);
+      const enableMappingTransaction = await MapperContract.connect(multisigAddress).enableMapping(mapId);
       expect(enableMappingTransaction).to.not.be.reverted;
 
       let newMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
@@ -325,20 +325,20 @@ describe("Mapper", function () {
       await enableMappingAndCheck(MAP_ID_2, false, true);
     });
 
-    it("Should fail enableMapping if sender is NOT Owner", async function () {
+    it("Should fail enableMapping if sender has NOT Multisig role", async function () {
       await registerMappings();
       await expect(
           MapperContract.connect(user1).enableMapping(MAP_ID_2)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
     });
 
     it("Should fail enableMapping if mapCounter >= mapId", async function () {
       await enableMappingAndCheck(MAP_ID_2, false, true);
 
-      let mapCounter = await MapperContract.mapCounter();
+      await MapperContract.mapCounter();
 
       await expect(
-          MapperContract.enableMapping(failMapId)
+          MapperContract.connect(multisigAddress).enableMapping(failMapId)
       ).to.be.revertedWith("Mapper: MapCounter must be greater than or equal mapId");
     });
 
@@ -346,11 +346,11 @@ describe("Mapper", function () {
       await registerMappings();
       let oldMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(MAP_ID_2);
       expect(oldMapInfo.isAllowed).to.be.equal(false);
-      const enableMappingTransaction = await MapperContract.enableMapping(MAP_ID_2);
+      const enableMappingTransaction = await MapperContract.connect(multisigAddress).enableMapping(MAP_ID_2);
       expect(enableMappingTransaction).to.not.be.reverted;
 
       await expect(
-          MapperContract.enableMapping(MAP_ID_2)
+          MapperContract.connect(multisigAddress).enableMapping(MAP_ID_2)
       ).to.be.revertedWith("Mapper: IsAllowed must be false");
     });
 
@@ -364,7 +364,7 @@ describe("Mapper", function () {
       let oldMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
       expect(oldMapInfo.isAllowed).to.be.equal(expectedAllowedBefore);
 
-      const disableMappingTransaction = await MapperContract.disableMapping(mapId);
+      const disableMappingTransaction = await MapperContract.connect(emergencyAddress).disableMapping(mapId);
       expect(disableMappingTransaction).to.not.be.reverted;
 
       let newMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
@@ -389,11 +389,11 @@ describe("Mapper", function () {
       await disableMappingAndCheck(MAP_ID_3, true, false);
     });
 
-    it("Should fail disableMapping if sender is NOT Owner", async function () {
+    it("Should fail disableMapping if sender has NOT Emergency role", async function () {
       await registerMappings();
       await expect(
           MapperContract.connect(user1).disableMapping(MAP_ID_3)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${EMERGENCY_ROLE}`);
     });
 
     it("Should fail disableMapping if mapCounter >= mapId", async function () {
@@ -401,7 +401,7 @@ describe("Mapper", function () {
 
       let mapCounter = await MapperContract.mapCounter();
       await expect(
-          MapperContract.disableMapping(failMapId)
+          MapperContract.connect(emergencyAddress).disableMapping(failMapId)
       ).to.be.revertedWith("Mapper: MapCounter must be greater than or equal mapId");
     });
 
@@ -409,12 +409,12 @@ describe("Mapper", function () {
       await registerMappings();
       let oldMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(MAP_ID_1);
       expect(oldMapInfo.isAllowed).to.be.equal(true);
-      const disableMappingTransaction = await MapperContract.disableMapping(MAP_ID_1);
+      const disableMappingTransaction = await MapperContract.connect(emergencyAddress).disableMapping(MAP_ID_1);
       expect(disableMappingTransaction).to.not.be.reverted;
 
 
       await expect(
-          MapperContract.disableMapping(MAP_ID_1)
+          MapperContract.connect(emergencyAddress).disableMapping(MAP_ID_1)
       ).to.be.revertedWith("Mapper: IsAllowed must be true");
     });
   });

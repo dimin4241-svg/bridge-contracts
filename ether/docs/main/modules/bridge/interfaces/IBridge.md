@@ -66,7 +66,7 @@ Triggered in the &#x60;changeMapperAddress&#x60; function.
 event GasAccumulatedWithdrawn(address account, uint256 amount)
 ```
 
-Emitted when the owner withdraws accumulated gas funds.
+Emitted when the EMERGENCY address withdraws accumulated gas funds.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -79,7 +79,7 @@ Emitted when the owner withdraws accumulated gas funds.
 event LiquidityTokenWithdrawn(address account, address token, uint256 amount, bool useTransfer)
 ```
 
-Emitted when the owner withdraws liquidity from the contract.
+Emitted when the MULTISIG address withdraws liquidity from the contract.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -94,7 +94,7 @@ Emitted when the owner withdraws liquidity from the contract.
 event LiquidityCoinWithdrawn(address account, uint256 amount)
 ```
 
-Emitted when the owner withdraws liquidity from the contract.
+Emitted when the MULTISIG address withdraws liquidity from the contract.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -128,6 +128,21 @@ Emitted when native coins are deposited into the contract.
 | account | address | The address that sent the coins. |
 | amount | uint256 | The amount of coins deposited. |
 
+#### DailyLimitSet
+
+```solidity
+event DailyLimitSet(bytes32 token, address relayer, uint256 newLimit, uint256 oldLimit)
+```
+
+Emitted when a daily limit is set or updated.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| token | bytes32 | The token address (bytes32). bytes32(0) for native coin. |
+| relayer | address | The relayer address. |
+| newLimit | uint256 | The new daily limit. |
+| oldLimit | uint256 | The previous daily limit. |
+
 ## Structs
 #### InitParams
 
@@ -136,12 +151,18 @@ Struct for initializing the Bridge contract.
 ```solidity
 struct InitParams {
   address mapperAddress;
+  address emergencyAddress;
+  address multisigAddress;
+  address relayerAddress;
 }
 ```
 
 | Name | Description |
 | ---- | ----------- |
 | mapperAddress | The address of the Mapper contract used for token mapping. |
+| emergencyAddress | The address of the emergency role. |
+| multisigAddress | The address of the multisig role. |
+| relayerAddress | The address of the relayer role. |
 
 #### ECDSAParams
 
@@ -257,6 +278,23 @@ struct WithdrawCoinLiquidityParams {
 | recipientAddress | The address that will receive the withdrawn coins. |
 | amount | The amount of coin to withdraw. |
 
+#### DailyVolumeTracker
+
+Struct to track daily volumes for a token/relayer combination.
+Reuses the same storage slot by overwriting previous day&#x27;s data when a new day starts.
+
+```solidity
+struct DailyVolumeTracker {
+  uint256 dayStartTimestamp;
+  uint256 dayVolume;
+}
+```
+
+| Name | Description |
+| ---- | ----------- |
+| dayStartTimestamp | The timestamp when the 24-hour window started. 0 if not initialized. |
+| dayVolume | Volume for the current day. Reset to 0 when 24 hours have passed. |
+
 ## Functions
 #### bridgeTokens
 
@@ -281,7 +319,7 @@ function receiveTokens(struct IBridge.ReceiveTokensParams receiveTokensParams) e
 
 Receives tokens from the bridge contract.
 This function unlocks or mints tokens depending on the withdrawal mechanism.
-Only the contract owner can call this function.
+Only the address with RELAYER role can call this function.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -294,9 +332,9 @@ function withdrawGasAccumulated() external
 ```
 **Selector**: `0xc987658a`
 
-Withdraws accumulated gas compensation funds to the contract owner.
-Transfers the entire gasAccumulated balance to the owner and resets the counter.
-Only the contract owner can call this function.
+Withdraws accumulated gas compensation funds to the EMERGENCY address.
+Transfers the entire gasAccumulated balance to the EMERGENCY address and resets the counter.
+Only the address with EMERGENCY role can call this function.
 Emits a {GasAccumulatedWithdrawn} event on success.
 
 #### withdrawTokenLiquidity
@@ -308,7 +346,7 @@ function withdrawTokenLiquidity(struct IBridge.WithdrawTokenLiquidityParams with
 
 Withdraws token liquidity from the contract to the withdrawRecipient.
 Transfers the balance held by the contract to the withdrawRecipient.
-Only the contract owner can call this function.
+Only the address with MULTISIG role can call this function.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
@@ -323,9 +361,25 @@ function withdrawCoinLiquidity(struct IBridge.WithdrawCoinLiquidityParams withdr
 
 Withdraws coin liquidity from the contract to the withdrawRecipient.
 Transfers the balance held by the contract to the withdrawRecipient.
-Only the contract owner can call this function.
+Only the address with MULTISIG role can call this function.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | withdrawCoinLiquidityParams | struct IBridge.WithdrawCoinLiquidityParams | The struct containing parameters for the withdraw process. |
+
+#### setDailyLimit
+
+```solidity
+function setDailyLimit(bytes32 tokenAddress, address relayer, uint256 limit) external
+```
+**Selector**: `0x75b7ba62`
+
+Sets or updates the daily limit for a specific token and relayer.
+Only the address with MULTISIG role can call this function.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| tokenAddress | bytes32 | The token address (bytes32). Use bytes32(0) for native coin. |
+| relayer | address | The relayer address. |
+| limit | uint256 | The daily limit amount. |
 

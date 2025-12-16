@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.30;
 
-import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {
@@ -23,12 +23,30 @@ import { IBridge } from "./interfaces/IBridge.sol";
  * @author Whitechain
  * @notice Contract for cross-chain token and coin transfers.
  */
-contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuardUpgradeable, IBridge {
+contract BridgeTest is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, IBridge {
     /**
      * @notice Using SafeERC20Upgradeable to ensure safe interactions with tokens.
      * This prevents issues where some tokens return false instead of reverting.
      */
     using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    /**
+     * @notice Role for the emergency address.
+     * This role is responsible for withdrawing gas accumulated.
+     */
+    bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
+
+    /**
+     * @notice Role for the multisig address.
+     * This role is responsible for changing the address of the Mapper contract.
+     */
+    bytes32 public constant MULTISIG_ROLE = keccak256("MULTISIG_ROLE");
+
+    /**
+     * @notice Role for the relayer address.
+     * This role is responsible for receiving tokens from the origin chain.
+     */
+    bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
 
     /**
      * @notice Accumulated gas fees paid by users during bridging.
@@ -48,6 +66,20 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      * The hash should be computed from all critical parameters and marked as used after successful execution.
      */
     mapping(bytes32 hash => bool isUsed) public usedHashes;
+
+    /**
+     * @notice Daily limit per token and per relayer.
+     * Use bytes32(0) for native coin.
+     * Mapping: tokenAddress (bytes32) => relayerAddress => dailyLimit
+     */
+    mapping(bytes32 tokenAddress => mapping(address relayer => uint256 limit)) public dailyLimits;
+
+    /**
+     * @notice Tracks received volume per token, per relayer.
+     * Reuses the same storage slot by overwriting previous day's data when a new day starts.
+     * Mapping: tokenAddress => relayerAddress => DailyVolumeTracker
+     */
+    mapping(bytes32 tokenAddress => mapping(address relayer => DailyVolumeTracker)) public dailyVolumes;
 
     /**
      * @notice Example public variable used for testing purposes.
@@ -109,9 +141,18 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      * This function can only be called once due to the `initializer` modifier.
      * @param initParams See {IBridge-InitParams}.
      */
-    function initialize(InitParams calldata initParams) external initializer nonZeroAddress(initParams.mapperAddress) {
+    function initialize(
+        InitParams calldata initParams
+    )
+        external
+        initializer
+        nonZeroAddress(initParams.mapperAddress)
+        nonZeroAddress(initParams.emergencyAddress)
+        nonZeroAddress(initParams.multisigAddress)
+        nonZeroAddress(initParams.relayerAddress)
+    {
         __UUPSUpgradeable_init();
-        __Ownable2Step_init();
+        __AccessControl_init();
         __ReentrancyGuard_init();
 
         require(
@@ -121,6 +162,12 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
             }),
             "Bridge: New address does not support IMapper"
         );
+
+        _grantRole(DEFAULT_ADMIN_ROLE, initParams.multisigAddress);
+        _grantRole(MULTISIG_ROLE, initParams.multisigAddress);
+        _grantRole(EMERGENCY_ROLE, initParams.emergencyAddress);
+        _grantRole(RELAYER_ROLE, initParams.relayerAddress);
+
         Mapper = IMapper(initParams.mapperAddress);
     }
 
@@ -174,7 +221,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
             _executeTokenTransferFrom({
                 useTransfer: _mapInfo.useTransfer,
                 tokenAddress: _mapInfo.originTokenAddress,
-                from: msg.sender,
+                from: _msgSender(),
                 to: address(this),
                 amount: _amount
             });
@@ -192,7 +239,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         }
 
         emit Deposit({
-            fromAddress: bytes32(uint256(uint160(msg.sender))),
+            fromAddress: bytes32(uint256(uint160(_msgSender()))),
             toAddress: bridgeTokensParams.bridgeParams.toAddress,
             originTokenAddress: _mapInfo.originTokenAddress,
             targetTokenAddress: _mapInfo.targetTokenAddress,
@@ -211,15 +258,19 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
     )
         external
         nonReentrant
-        onlyOwner
+        onlyRole(RELAYER_ROLE)
         nonZeroBytes32(receiveTokensParams.fromAddress)
         nonZeroBytes32(receiveTokensParams.toAddress)
         nonZeroUint256(receiveTokensParams.amount)
     {
+        address relayer = _msgSender();
         IMapper.MapInfo memory _mapInfo = _getMapInfo({ mapId: receiveTokensParams.mapId });
 
         require(_mapInfo.isAllowed, "Bridge: IsAllowed must be true");
         require(_mapInfo.depositType == IMapper.DepositType.None, "Bridge: DepositType must be equal to None");
+
+        bytes32 tokenAddress = _mapInfo.isCoin ? bytes32(0) : _mapInfo.targetTokenAddress;
+        _checkAndUpdateDailyLimit(tokenAddress, relayer, receiveTokensParams.amount);
 
         if (_mapInfo.isCoin) {
             require(
@@ -273,7 +324,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
     /**
      * @notice See {IBridge-withdrawGasAccumulated}.
      */
-    function withdrawGasAccumulated() external nonReentrant onlyOwner nonZeroUint256(gasAccumulated) {
+    function withdrawGasAccumulated() external nonReentrant onlyRole(EMERGENCY_ROLE) nonZeroUint256(gasAccumulated) {
         require(
             address(this).balance >= gasAccumulated,
             "Bridge: Coins balance must be greater or equal gasAccumulated"
@@ -281,10 +332,10 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         uint256 amount = gasAccumulated;
 
         gasAccumulated = 0;
-        (bool success, ) = payable(owner()).call{ value: amount }("");
+        (bool success, ) = payable(_msgSender()).call{ value: amount }("");
         require(success, "Bridge: Gas accumulated withdrawal failed");
 
-        emit GasAccumulatedWithdrawn({ account: owner(), amount: amount });
+        emit GasAccumulatedWithdrawn({ account: _msgSender(), amount: amount });
     }
 
     /**
@@ -296,7 +347,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
     )
         external
         nonReentrant
-        onlyOwner
+        onlyRole(MULTISIG_ROLE)
         nonZeroUint256(withdrawTokenLiquidityParams.amount)
         nonZeroAddress(withdrawTokenLiquidityParams.recipientAddress)
         nonZeroBytes32(withdrawTokenLiquidityParams.tokenAddress)
@@ -325,7 +376,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
     )
         external
         nonReentrant
-        onlyOwner
+        onlyRole(MULTISIG_ROLE)
         nonZeroUint256(withdrawCoinLiquidityParams.amount)
         nonZeroAddress(withdrawCoinLiquidityParams.recipientAddress)
     {
@@ -350,12 +401,15 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
     /**
      * @notice Allows users to deposit tokens into the contract.
      * Requires prior approval from the user.
-     * Only the contract owner can call this function.
+     * Only the address with EMERGENCY role can call this function.
      * Emits a {TokensDeposited} event.
      * @param mapId The ID of the token mapping in the Mapper contract.
      * @param amount Amount of tokens to deposit.
      */
-    function depositTokens(uint256 mapId, uint256 amount) external nonReentrant onlyOwner nonZeroUint256(amount) {
+    function depositTokens(
+        uint256 mapId,
+        uint256 amount
+    ) external nonReentrant onlyRole(EMERGENCY_ROLE) nonZeroUint256(amount) {
         IMapper.MapInfo memory _mapInfo = _getMapInfo({ mapId: mapId });
 
         require(_mapInfo.isAllowed, "Bridge: IsAllowed must be true");
@@ -368,7 +422,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         _executeTokenTransferFrom({
             useTransfer: _mapInfo.useTransfer,
             tokenAddress: _mapInfo.targetTokenAddress,
-            from: msg.sender,
+            from: _msgSender(),
             to: address(this),
             amount: amount
         });
@@ -379,7 +433,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         uint256 actualAmount = balanceAfter - balanceBefore;
 
         emit TokensDeposited({
-            account: msg.sender,
+            account: _msgSender(),
             token: address(uint160(uint256(_mapInfo.targetTokenAddress))),
             amount: actualAmount
         });
@@ -387,20 +441,22 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
 
     /**
      * @notice Allows users to deposit coins into the contract.
-     * Only the contract owner can call this function.
+     * Only the address with EMERGENCY role can call this function.
      * Emits a {CoinsDeposited} event.
      */
-    function depositCoins() external payable onlyOwner nonZeroUint256(msg.value) {
-        emit CoinsDeposited({ account: msg.sender, amount: msg.value });
+    function depositCoins() external payable onlyRole(EMERGENCY_ROLE) nonZeroUint256(msg.value) {
+        emit CoinsDeposited({ account: _msgSender(), amount: msg.value });
     }
 
     /**
      * @notice Changes the address of the Mapper contract.
-     * Only the contract owner can call this function.
+     * Only the address with MULTISIG role can call this function.
      * Emits a {MapperAddressChanged} event on success.
      * @param _newMapperAddress The new address of the Mapper contract.
      */
-    function changeMapperAddress(address _newMapperAddress) external onlyOwner nonZeroAddress(_newMapperAddress) {
+    function changeMapperAddress(
+        address _newMapperAddress
+    ) external onlyRole(MULTISIG_ROLE) nonZeroAddress(_newMapperAddress) {
         require(
             ERC165Checker.supportsInterface({ account: _newMapperAddress, interfaceId: type(IMapper).interfaceId }),
             "Bridge: New address does not support IMapper"
@@ -408,19 +464,63 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         address _oldMapperAddress = address(Mapper);
         Mapper = IMapper(_newMapperAddress);
         emit MapperAddressChanged({
-            account: msg.sender,
+            account: _msgSender(),
             oldAddress: _oldMapperAddress,
             newAddress: _newMapperAddress
         });
     }
 
     /**
+     * @notice Sets or updates the daily limit for a specific token and relayer.
+     * Only the address with MULTISIG role can call this function.
+     * Emits a {DailyLimitSet} event on success.
+     * @param token The token address (bytes32). Use bytes32(0) for native coin.
+     * @param relayer The relayer address.
+     * @param limit The daily limit amount.
+     */
+    function setDailyLimit(
+        bytes32 token,
+        address relayer,
+        uint256 limit
+    ) external onlyRole(MULTISIG_ROLE) nonZeroAddress(relayer) {
+        require(hasRole(RELAYER_ROLE, relayer), "Bridge: Relayer does not exist");
+        uint256 oldLimit = dailyLimits[token][relayer];
+        dailyLimits[token][relayer] = limit;
+
+        emit DailyLimitSet({ token: token, relayer: relayer, newLimit: limit, oldLimit: oldLimit });
+    }
+
+    /**
+     * @notice Checks and updates the daily limit for a token and relayer.
+     * @param tokenAddress The token address (bytes32). Use bytes32(0) for native coin.
+     * @param relayer The relayer address.
+     * @param amount The amount to add to the daily volume.
+     */
+    function _checkAndUpdateDailyLimit(bytes32 tokenAddress, address relayer, uint256 amount) internal {
+        uint256 dailyLimit = dailyLimits[tokenAddress][relayer];
+        require(dailyLimit > 0, "Bridge: Daily limit for relayer must be set");
+
+        DailyVolumeTracker storage tracker = dailyVolumes[tokenAddress][relayer];
+
+        // If 1 day have passed, reset the window
+        if (block.timestamp >= tracker.dayStartTimestamp + 1 days) {
+            tracker.dayVolume = 0;
+            tracker.dayStartTimestamp = block.timestamp;
+        }
+
+        uint256 newAmount = tracker.dayVolume + amount;
+        require(newAmount <= dailyLimit, "Bridge: Daily limit exceeded");
+
+        tracker.dayVolume = newAmount;
+    }
+
+    /**
      * @notice Authorizes the upgrade of the contract to a new implementation.
      * This function overrides `_authorizeUpgrade` from UUPSUpgradeable.
-     * Only the contract owner can authorize an upgrade.
+     * Only the address with MULTISIG role can authorize an upgrade.
      * @param newImplementation Address of the new implementation contract.
      */
-    function _authorizeUpgrade(address newImplementation) internal override(UUPSUpgradeable) onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override(UUPSUpgradeable) onlyRole(MULTISIG_ROLE) {}
 
     /**
      * @notice Executes a token transfer from this contract to the specified recipient.
@@ -518,7 +618,7 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      * @notice Validates the ECDSA signature and returns the computed message hash.
      *  - Computes a unique hash from all critical parameters of the bridging request.
      *  - Ensures the hash has not been used before to prevent replay attacks.
-     *  - Recovers the signer address from the signature and verifies it matches the contract owner.
+     *  - Recovers the signer address from the signature and verifies it has the RELAYER_ROLE.
      * @param bridgeTokensParams Struct containing parameters for the bridging process.
      * @param mapInfo Struct containing detailed information about the mapping.
      * @param gasAmount The amount of gas fee to be paid.
@@ -529,11 +629,10 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         IMapper.MapInfo memory mapInfo,
         uint256 gasAmount
     ) private view returns (bytes32 hash) {
-        // Recovering the address of the signer from the signature
+        // Generating the hash of the signed message
         hash = keccak256(
             abi.encodePacked(
-                owner(),
-                msg.sender,
+                _msgSender(),
                 bridgeTokensParams.bridgeParams.toAddress,
                 mapInfo.targetTokenAddress,
                 gasAmount,
@@ -546,18 +645,20 @@ contract BridgeTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
         );
 
         require(!usedHashes[hash], "Bridge: Hash already used");
+        require(bridgeTokensParams.ECDSAParams.deadline >= block.timestamp, "ECDSAChecks: Signature Expired");
 
-        // We do an ECDSA check
-        ECDSAChecks.validate(
+        // Recover the signer address from the signature
+        address signer = ECDSAChecks.recoverSigner(
             ECDSAChecks.ECDSAParams({
                 hash: hash,
                 r: bridgeTokensParams.ECDSAParams.r,
                 s: bridgeTokensParams.ECDSAParams.s,
-                signerAddress: owner(),
-                deadline: bridgeTokensParams.ECDSAParams.deadline,
                 v: bridgeTokensParams.ECDSAParams.v
             })
         );
+
+        // Verify the signer has the RELAYER_ROLE
+        require(hasRole(RELAYER_ROLE, signer), "Bridge: Signer must have RELAYER_ROLE");
 
         return hash;
     }

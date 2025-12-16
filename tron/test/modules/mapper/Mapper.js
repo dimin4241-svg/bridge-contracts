@@ -8,11 +8,12 @@ contract("Mapper", (accounts) => {
     let newMapInfo;
     const tronWeb = new TronWeb({ fullHost: tronConfig.networks.nile.fullHost });
 
-    const OWNER_ADDRESS = process.env[`NILE_OWNER_ADDRESS`] || "";
+    const EMERGENCY_ADDRESS = process.env[`NILE_EMERGENCY_ADDRESS`] || "";
+    const MULTISIG_ADDRESS = process.env[`NILE_MULTISIG_ADDRESS`] || "";
     const MAPPER_ADDRESS = process.env[`NILE_MAPPER_ADDRESS`] || "";
 
-    if (!MAPPER_ADDRESS || MAPPER_ADDRESS.trim() === "" || !OWNER_ADDRESS || OWNER_ADDRESS.trim() === "") {
-        throw new Error('Environment variable MAPPER_ADDRESS || OWNER_ADDRESS is not set or empty');
+    if (!MAPPER_ADDRESS || MAPPER_ADDRESS.trim() === "" || !EMERGENCY_ADDRESS || EMERGENCY_ADDRESS.trim() === "" || !MULTISIG_ADDRESS || MULTISIG_ADDRESS.trim() === "") {
+        throw new Error('Environment variable MAPPER_ADDRESS || EMERGENCY_ADDRESS || MULTISIG_ADDRESS is not set or empty');
     }
 
     before(async () => {
@@ -22,10 +23,16 @@ contract("Mapper", (accounts) => {
 
     describe("Deployment", function () {
 
-        it("should return correct owner", async () => {
-            const ownerAddress = await MapperContract.owner();
+        it("should check MULTISIG_ROLE", async () => {
+            const multisigAddress = await MapperContract.hasRole(await MapperContract.MULTISIG_ROLE(), MULTISIG_ADDRESS);
 
-            assert.equal(tronWeb.address.fromHex(ownerAddress), OWNER_ADDRESS, "Owner mismatch");
+            assert.equal(multisigAddress, true, "Multisig address mismatch");
+        });
+
+        it("should check EMERGENCY_ROLE", async () => {
+            const emergencyAddress = await MapperContract.hasRole(await MapperContract.EMERGENCY_ROLE(), EMERGENCY_ADDRESS);
+
+            assert.equal(emergencyAddress, true, "Emergency address mismatch");
         });
 
     });

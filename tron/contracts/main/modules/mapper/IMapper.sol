@@ -9,6 +9,16 @@ pragma solidity =0.8.24;
  */
 interface IMapper {
     /**
+     * @notice Struct for initializing the Mapper contract.
+     * @param emergencyAddress The address of the emergency role.
+     * @param multisigAddress The address of the multisig role.
+     */
+    struct InitParams {
+        address emergencyAddress;
+        address multisigAddress;
+    }
+
+    /**
      * @notice Enum representing the type of deposit.
      * Used to specify how tokens are handled during deposit.
      * - `None`: No deposit allowed.
