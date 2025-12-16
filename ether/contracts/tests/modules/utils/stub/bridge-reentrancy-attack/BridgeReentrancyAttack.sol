@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.30;
 
-import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import { IBridge } from "./../../../../../main/modules/bridge/interfaces/IBridge.sol";
 
 /**
@@ -41,15 +40,5 @@ contract BridgeReentrancyAttack {
      */
     function attack() external {
         IBridge(bridgeContractAddress).withdrawGasAccumulated();
-    }
-
-    /**
-     * @notice Accepts ownership of the contract.
-     * This function calls `acceptOwnership()` on the target bridge contract,
-     * finalizing a two-step ownership transfer process initiated with `transferOwnership()`.
-     * @param bridgeAddress The address of the bridge contract whose ownership is being accepted.
-     */
-    function acceptOwnership(address bridgeAddress) external {
-        Ownable2StepUpgradeable(bridgeAddress).acceptOwnership();
     }
 }

@@ -43,7 +43,13 @@
     "scripts-Mapper-setup:sepolia": "npx hardhat run --network sepolia ./scripts/modules/mapper/setup.ts",
     "scripts-Mapper-setup:whitechain": "npx hardhat run --network whitechain ./scripts/modules/mapper/setup.ts",
     "scripts-Mapper-setup:whitechainTestnet": "npx hardhat run --network whitechainTestnet ./scripts/modules/mapper/setup.ts",
-    "scripts-Mapper-setup:whitechainDevnet": "npx hardhat run --network whitechainDevnet ./scripts/modules/mapper/setup.ts"
+    "scripts-Mapper-setup:whitechainDevnet": "npx hardhat run --network whitechainDevnet ./scripts/modules/mapper/setup.ts",
+
+    "scripts-Bridge-setup:mainnet": "npx hardhat run --network mainnet ./scripts/modules/bridge/setup.ts",
+    "scripts-Bridge-setup:sepolia": "npx hardhat run --network sepolia ./scripts/modules/bridge/setup.ts",
+    "scripts-Bridge-setup:whitechain": "npx hardhat run --network whitechain ./scripts/modules/bridge/setup.ts",
+    "scripts-Bridge-setup:whitechainTestnet": "npx hardhat run --network whitechainTestnet ./scripts/modules/bridge/setup.ts",
+    "scripts-Bridge-setup:whitechainDevnet": "npx hardhat run --network whitechainDevnet ./scripts/modules/bridge/setup.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

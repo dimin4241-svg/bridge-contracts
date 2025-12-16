@@ -9,6 +9,16 @@ pragma solidity =0.8.24;
  */
 interface IMapper {
     /**
+     * @notice Struct for initializing the Mapper contract.
+     * @param emergencyAddress The address of the emergency role.
+     * @param multisigAddress The address of the multisig role.
+     */
+    struct InitParams {
+        address emergencyAddress;
+        address multisigAddress;
+    }
+
+    /**
      * @notice Enum representing the type of deposit.
      * Used to specify how tokens are handled during deposit.
      * - `None`: No deposit allowed.
@@ -51,7 +61,7 @@ interface IMapper {
      * If true, the contract will use a direct `transfer` call.
      * If false, it will use a low-level call with safety checks `safeTransfer` or `safeTransferFore`.
      * @param isAllowed Boolean flag indicating if the token is allowed for bridging.
-     * @param isCoin Boolean flag indicating if the token is a native coin or an ERC20 token.
+     * @param isCoin Boolean flag indicating if the token is a native coin or an token.
      */
     struct MapInfo {
         uint256 originChainId;
@@ -151,7 +161,7 @@ interface IMapper {
      * If true, the contract will use a direct `transfer` call.
      * If false, it will use a low-level call with safety checks `safeTransfer` or `safeTransferFore`.
      * @return isAllowed Boolean flag indicating if the token is allowed for bridging.
-     * @return isCoin Boolean flag indicating if the token is a native coin or an ERC20 token.
+     * @return isCoin Boolean flag indicating if the token is a native coin or an token.
      */
     function mapInfo(
         uint256 mapId

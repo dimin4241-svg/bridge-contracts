@@ -4,7 +4,7 @@
 
 Contract for cross-chain token and coin transfers.
 
-**Inherits:** [Initializable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.md) [UUPSUpgradeable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.md) [Ownable2StepUpgradeable](../../../../@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.md) [ReentrancyGuardUpgradeable](../../../../@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.md) [IBridge](interfaces/IBridge.md)
+**Inherits:** [Initializable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.md) [UUPSUpgradeable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.md) [AccessControlUpgradeable](../../../../@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.md) [ReentrancyGuardUpgradeable](../../../../@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.md) [IBridge](interfaces/IBridge.md)
 ## Modifiers
 #### nonZeroAddress
 
@@ -43,6 +43,33 @@ Modifier to ensure a provided number is greater than zero.
 | num | uint256 | The number to check. |
 
 ## Public variables
+#### EMERGENCY_ROLE
+```solidity
+bytes32 constant EMERGENCY_ROLE = 0xbf233dd2aafeb4d50879c4aa5c81e96d92f6e6945c906a58f9f2d1c1631b4b26
+```
+**Selector**: `0x20df4359`
+
+Role for the emergency address.
+This role is responsible for withdrawing gas accumulated.
+
+#### MULTISIG_ROLE
+```solidity
+bytes32 constant MULTISIG_ROLE = 0xa5a0b70b385ff7611cd3840916bd08b10829e5bf9e6637cf79dd9a427fc0e2ab
+```
+**Selector**: `0xe328400c`
+
+Role for the multisig address.
+This role is responsible for changing the address of the Mapper contract.
+
+#### RELAYER_ROLE
+```solidity
+bytes32 constant RELAYER_ROLE = 0xe2b7fb3b832174769106daebcfd6d1970523240dda11281102db9363b83b0dc4
+```
+**Selector**: `0x926d7d7f`
+
+Role for the relayer address.
+This role is responsible for receiving tokens from the origin chain.
+
 #### gasAccumulated
 ```solidity
 uint256 gasAccumulated
@@ -51,7 +78,7 @@ uint256 gasAccumulated
 
 Accumulated gas fees paid by users during bridging.
 Tracks the total amount of coins collected for gas compensation,
-which can later be withdrawn by the contract owner and is reset after each withdrawal.
+which can later be withdrawn by the address with EMERGENCY role and is reset after each withdrawal.
 
 #### Mapper
 ```solidity
@@ -70,6 +97,26 @@ mapping(bytes32 &#x3D;&gt; bool) usedHashes
 
 Tracks which message hashes have already been used to prevent replay attacks.
 The hash should be computed from all critical parameters and marked as used after successful execution.
+
+#### dailyLimits
+```solidity
+mapping(bytes32 &#x3D;&gt; mapping(address &#x3D;&gt; uint256)) dailyLimits
+```
+**Selector**: `0x914d6a6c`
+
+Daily limit per token and per relayer.
+Use bytes32(0) for native coin.
+Mapping: tokenAddress (bytes32) &#x3D;&gt; relayerAddress &#x3D;&gt; dailyLimit
+
+#### dailyVolumes
+```solidity
+mapping(bytes32 &#x3D;&gt; mapping(address &#x3D;&gt; struct IBridge.DailyVolumeTracker)) dailyVolumes
+```
+**Selector**: `0x8e1b6248`
+
+Tracks received volume per token, per relayer.
+Reuses the same storage slot by overwriting previous day&#x27;s data when a new day starts.
+Mapping: tokenAddress &#x3D;&gt; relayerAddress &#x3D;&gt; DailyVolumeTracker
 
 ## Functions
 #### constructor
@@ -93,7 +140,7 @@ Emits a {CoinsDeposited} event for tracking the deposit.
 ```solidity
 function initialize(struct IBridge.InitParams initParams) external
 ```
-**Selector**: `0x8f09926d`
+**Selector**: `0x0415cc15`
 
 Initializes the contract with the given parameters.
 This function can only be called once due to the &#x60;initializer&#x60; modifier.
@@ -172,7 +219,7 @@ function depositTokens(uint256 mapId, uint256 amount) external
 
 Allows users to deposit tokens into the contract.
 Requires prior approval from the user.
-Only the contract owner can call this function.
+Only the address with EMERGENCY role can call this function.
 Emits a {TokensDeposited} event.
 
 | Name | Type | Description |
@@ -188,7 +235,7 @@ function depositCoins() external payable
 **Selector**: `0xc57895f3`
 
 Allows users to deposit coins into the contract.
-Only the contract owner can call this function.
+Only the address with EMERGENCY role can call this function.
 Emits a {CoinsDeposited} event.
 
 #### changeMapperAddress
@@ -199,10 +246,27 @@ function changeMapperAddress(address _newMapperAddress) external
 **Selector**: `0x28ae4a97`
 
 Changes the address of the Mapper contract.
-Only the contract owner can call this function.
+Only the address with MULTISIG role can call this function.
 Emits a {MapperAddressChanged} event on success.
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | _newMapperAddress | address | The new address of the Mapper contract. |
+
+#### setDailyLimit
+
+```solidity
+function setDailyLimit(bytes32 token, address relayer, uint256 limit) external
+```
+**Selector**: `0x75b7ba62`
+
+Sets or updates the daily limit for a specific token and relayer.
+Only the address with MULTISIG role can call this function.
+Emits a {DailyLimitSet} event on success.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| token | bytes32 | The token address (bytes32). Use bytes32(0) for native coin. |
+| relayer | address | The relayer address. |
+| limit | uint256 | The daily limit amount. |
 

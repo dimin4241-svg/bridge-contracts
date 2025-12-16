@@ -2,9 +2,15 @@
 /**
  * @dev Struct for initializing the Bridge contract.
  * @param mapperAddress Address of the Mapper contract used for token mapping.
+ * @param emergencyAddress Address of the EMERGENCY role.
+ * @param multisigAddress Address of the MULTISIG role.
+ * @param relayerAddress Address of the RELAYER role.
  */
 export interface InitParams {
     mapperAddress: string;
+    emergencyAddress: string;
+    multisigAddress: string;
+    relayerAddress: string;
 }
 
 /**
@@ -60,4 +66,26 @@ export interface ReceiveTokensParams {
 export interface BridgeTokensParams {
     bridgeParams: BridgeParams;
     ECDSAParams : ECDSAParams;
+}
+
+/**
+ * @dev Struct for tracking daily volumes for a token/relayer combination.
+ * @param dayStartTimestamp The timestamp when the 24-hour window started. 0 if not initialized.
+ * @param dayVolume Volume for the current day. Reset to 0 when 24 hours have passed.
+ */
+export interface DailyVolumeTracker {
+    dayStartTimestamp: bigint;
+    dayVolume: bigint;
+}
+
+/**
+ * @dev Struct for storing parameters of a daily limit.
+ * @param token The token address (bytes32). Use bytes32(0) for native coin.
+ * @param relayer The relayer address.
+ * @param limit The daily limit amount.
+ */
+export interface DailyLimitParams {
+    token: string;
+    relayer: string;
+    limit: bigint;
 }

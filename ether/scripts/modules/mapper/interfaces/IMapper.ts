@@ -1,4 +1,14 @@
 /**
+ * @dev Struct for initializing the Mapper contract.
+ * @param emergencyAddress The address of the emergency role.
+ * @param multisigAddress The address of the multisig role.
+ */
+export interface InitParams {
+  emergencyAddress: string;
+  multisigAddress: string;
+}
+
+/**
  * @notice Enum representing the type of deposit.
  * Used to specify how tokens are handled during deposit.
  * - `None`: No deposit allowed.

@@ -5,7 +5,7 @@
 Contract responsible for managing token mappings between different chains.
 It supports the registration, updating, and revocation of tokens for bridging.
 
-**Inherits:** [Initializable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.md) [UUPSUpgradeable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.md) [Ownable2StepUpgradeable](../../../../@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.md) [ERC165Upgradeable](../../../../@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.md) [IMapper](interfaces/IMapper.md)
+**Inherits:** [Initializable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.md) [UUPSUpgradeable](../../../../@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.md) [AccessControlUpgradeable](../../../../@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.md) [IMapper](interfaces/IMapper.md)
 ## Modifiers
 #### nonZeroBytes32
 
@@ -20,6 +20,24 @@ Modifier to validate that a bytes32 identifier is not zero.
 | _bytes | bytes32 | The bytes32 value to be checked. |
 
 ## Public variables
+#### EMERGENCY_ROLE
+```solidity
+bytes32 constant EMERGENCY_ROLE = 0xbf233dd2aafeb4d50879c4aa5c81e96d92f6e6945c906a58f9f2d1c1631b4b26
+```
+**Selector**: `0x20df4359`
+
+Role for the emergency address.
+This role is responsible for disabling mappings.
+
+#### MULTISIG_ROLE
+```solidity
+bytes32 constant MULTISIG_ROLE = 0xa5a0b70b385ff7611cd3840916bd08b10829e5bf9e6637cf79dd9a427fc0e2ab
+```
+**Selector**: `0xe328400c`
+
+Role for the multisig address.
+This role is responsible for enabling and disabling mappings.
+
 #### mapCounter
 ```solidity
 uint256 mapCounter
@@ -68,11 +86,15 @@ constructor() public
 #### initialize
 
 ```solidity
-function initialize() external
+function initialize(struct IMapper.InitParams initParams) external
 ```
-**Selector**: `0x8129fc1c`
+**Selector**: `0xb6a597dd`
 
 Initializes the contract.
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| initParams | struct IMapper.InitParams | See {IMapper-InitParams}. |
 
 #### enableMapping
 

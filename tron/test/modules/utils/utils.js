@@ -1,17 +1,18 @@
 const GlobalConfig = require("./GlobalConfig");
 
+const TEST_TOKEN_ADDRESS = "TF2UyUXtP8jfHekKm3tZnE4s8LakoWqC15";
 const mapRouteTokens = [
     [
-        "0xe0eD6CF708f540CfAF4C446770e2b1654507a75B",
-        "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+        GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
+        GlobalConfig.TRON_USDT_ADDRESS
     ],
     [
-        "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
-        "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
+        GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+        GlobalConfig.TRON_USDT_ADDRESS
     ],
     [
-        "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
-        "TF2UyUXtP8jfHekKm3tZnE4s8LakoWqC15"
+        GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+        TEST_TOKEN_ADDRESS
     ]
 ];
 

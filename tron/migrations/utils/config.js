@@ -2,7 +2,7 @@ const GlobalConfig = require("../../test/modules/utils/GlobalConfig");
 
 const NETWORK_MAINNET = 'mainnet';
 const NETWORK_NILE = 'nile';
-
+const ZERO_HASH = "0x0000000000000000000000000000000000000000";
 
 /*
  * @notice Enum representing the type of deposit.
@@ -31,39 +31,15 @@ const WithdrawType = {
 }
 
 const MainnetMapperRoutes = [
-  // Bridge Tron >>> Whitechain USDT
-  {
-    originChainId: GlobalConfig.TRON_MAINNET_ID,
-    targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID,
-    depositType: DepositType.Lock,
-    withdrawType: WithdrawType.None,
-    originTokenAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", // Tron USDT
-    targetTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    useTransfer: true,
-    isAllowed: true,
-    isCoin: false
-  },
   // Bridge Tron >>> Whitechain WBT
   {
     originChainId: GlobalConfig.TRON_MAINNET_ID,
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID,
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "TFptbWaARrWTX5Yvy3gNG5Lm8BmhPx82Bt", // Tron WBT
-    targetTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
+    originTokenAddress: GlobalConfig.TRON_WBT_ADDRESS, // Tron WBT
+    targetTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
     useTransfer: false,
-    isAllowed: true,
-    isCoin: false
-  },
-  // Receive Tron <<< Whitechain USDT
-  {
-    originChainId: GlobalConfig.WHITECHAIN_MAINNET_ID,
-    targetChainId: GlobalConfig.TRON_MAINNET_ID,
-    depositType: DepositType.None,
-    withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    targetTokenAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", // Tron USDT
-    useTransfer: true,
     isAllowed: true,
     isCoin: false
   },
@@ -73,8 +49,8 @@ const MainnetMapperRoutes = [
     targetChainId: GlobalConfig.TRON_MAINNET_ID,
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
-    targetTokenAddress: "TFptbWaARrWTX5Yvy3gNG5Lm8BmhPx82Bt", // Tron WBT
+    originTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
+    targetTokenAddress: GlobalConfig.TRON_WBT_ADDRESS, // Tron WBT
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -88,8 +64,8 @@ const NileMapperRoutes = [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID,
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
-    targetTokenAddress: "0xb029c90B1642B507bA924BFC8CBc2826dc19Ec4b",
+    originTokenAddress: GlobalConfig.TRON_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
     useTransfer: true,
     isAllowed: true,
     isCoin: false
@@ -100,8 +76,8 @@ const NileMapperRoutes = [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID,
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "TGa8yeUzkCmuajSedYoPiA9bA8YBnvXvEL",
-    targetTokenAddress: "0x1CD97Ab75c1ffDFda5a231EE9626dEeC7D46165b",
+    originTokenAddress: GlobalConfig.NILE_WBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -112,8 +88,8 @@ const NileMapperRoutes = [
     targetChainId: GlobalConfig.TRON_NILE_ID,
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xb029c90B1642B507bA924BFC8CBc2826dc19Ec4b",
-    targetTokenAddress: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.TRON_USDT_ADDRESS,
     useTransfer: true,
     isAllowed: true,
     isCoin: false
@@ -124,11 +100,42 @@ const NileMapperRoutes = [
     targetChainId: GlobalConfig.TRON_NILE_ID,
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x1CD97Ab75c1ffDFda5a231EE9626dEeC7D46165b",
-    targetTokenAddress: "TGa8yeUzkCmuajSedYoPiA9bA8YBnvXvEL",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.NILE_WBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
+  }
+];
+
+const MainnetBridgeLimits = (relayerAddress) => [
+  {
+    token: ZERO_HASH, // Mainnet TRX
+    relayer: relayerAddress,
+    limit: GlobalConfig.TRX_1000 // 1000 TRX
+  },
+  {
+    token: GlobalConfig.TRON_WBT_ADDRESS, // Mainnet WBT
+    relayer: relayerAddress,
+    limit: GlobalConfig.WBT_TOKEN_500 // 500 WBT
+  }
+];
+
+const NileBridgeLimits = (relayerAddress) => [
+  {
+    token: ZERO_HASH, // Nile TRX
+    relayer: relayerAddress,
+    limit: GlobalConfig.TRX_1000 // 1000 TRX
+  },
+  {
+    token: GlobalConfig.NILE_USDT_ADDRESS, // Nile USDT
+    relayer: relayerAddress,
+    limit: GlobalConfig.USDT_10_000 // 10000 USDT
+  },
+  {
+    token: GlobalConfig.NILE_WBT_ADDRESS, // Nile WBT
+    relayer: relayerAddress,
+    limit: GlobalConfig.WBT_TOKEN_10_000 // 10000 WBT
   }
 ];
 
@@ -136,5 +143,7 @@ module.exports = {
   NETWORK_MAINNET,
   NETWORK_NILE,
   MainnetMapperRoutes,
-  NileMapperRoutes
+  NileMapperRoutes,
+  MainnetBridgeLimits,
+  NileBridgeLimits
 };

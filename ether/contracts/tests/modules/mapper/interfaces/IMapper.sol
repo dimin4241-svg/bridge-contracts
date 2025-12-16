@@ -35,6 +35,16 @@ interface IMapper {
     }
 
     /**
+     * @notice Struct for initializing the Mapper contract.
+     * @param emergencyAddress The address of the emergency role.
+     * @param multisigAddress The address of the multisig role.
+     */
+    struct InitParams {
+        address emergencyAddress;
+        address multisigAddress;
+    }
+
+    /**
      * @notice Struct containing detailed information about a token mapping.
      * Stores metadata for cross-chain token bridging.
      * @param originChainId The ID of the origin chain.
@@ -99,7 +109,7 @@ interface IMapper {
     /**
      * @notice Updates the restriction status of a token.
      * Sets the token mapping to allowed.
-     * Only the contract owner can call this function.
+     * Only the MULTISIG role can call this function.
      * Emits an {EnabledMapping} event on success.
      * @param mapId The ID of the mapping to be updated.
      */
@@ -108,7 +118,7 @@ interface IMapper {
     /**
      * @notice Revokes a token mapping.
      * Sets the token mapping to disallowed.
-     * Only the contract owner can call this function.
+     * Only the EMERGENCY role can call this function.
      * Emits a {DisabledMapping} event on success.
      * @param mapId The ID of the mapping to be revoked.
      */
@@ -119,7 +129,7 @@ interface IMapper {
      * Registers a new token mapping that defines a one‑directional connection between chains.
      * Each mapping is created specifically for either deposits or withdrawals.
      * For the bridge coin, the address of the wrapped token must be provided in the parameters.
-     * Only the contract owner can call this function.
+     * Only the MULTISIG role can call this function.
      * Emits an {RegisteredMapping} event on success.
      * @param mapInfo The type of mapping (MapInfo).
      */
@@ -127,7 +137,7 @@ interface IMapper {
 
     /**
      * @notice Deletes mapping information for a given mapId.
-     * Only the contract owner can call this function.
+     * Only the EMERGENCY role can call this function.
      * The function ensures that the provided mapId is valid and belongs to the current chain.
      * Depending on the deposit and withdraw types, it removes allowed token mappings.
      * @param mapId The unique identifier of the map to be deleted.

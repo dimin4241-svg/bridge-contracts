@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.8.30;
 
-import { Ownable2StepUpgradeable } from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import { ERC165Upgradeable } from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import { IMapper } from "./interfaces/IMapper.sol";
 
 /**
@@ -13,7 +12,19 @@ import { IMapper } from "./interfaces/IMapper.sol";
  * @notice Contract responsible for managing token mappings between different chains.
  * It supports the registration, updating, and revocation of tokens for bridging.
  */
-contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ERC165Upgradeable, IMapper {
+contract MapperTest is Initializable, UUPSUpgradeable, AccessControlUpgradeable, IMapper {
+    /**
+     * @notice Role for the emergency address.
+     * This role is responsible for disabling mappings.
+     */
+    bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
+
+    /**
+     * @notice Role for the multisig address.
+     * This role is responsible for enabling and disabling mappings.
+     */
+    bytes32 public constant MULTISIG_ROLE = keccak256("MULTISIG_ROLE");
+
     /**
      * @notice Counter for the mapping IDs.
      * This is incremented each time a new token mapping is added.
@@ -70,17 +81,22 @@ contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
 
     /**
      * @notice Initializes the contract.
+     * @param initParams See {IMapper-InitParams}.
      */
-    function initialize() external initializer {
+    function initialize(InitParams calldata initParams) external initializer {
         __UUPSUpgradeable_init();
-        __Ownable2Step_init();
+        __AccessControl_init();
+
+        _grantRole(DEFAULT_ADMIN_ROLE, initParams.multisigAddress);
+        _grantRole(MULTISIG_ROLE, initParams.multisigAddress);
+        _grantRole(EMERGENCY_ROLE, initParams.emergencyAddress);
     }
 
     /**
      * @notice See {IMapper-enableMapping}.
      * @param mapId See {IMapper-enableMapping}.
      */
-    function enableMapping(uint256 mapId) external onlyOwner {
+    function enableMapping(uint256 mapId) external onlyRole(MULTISIG_ROLE) {
         require(mapCounter >= mapId, "Mapper: MapCounter must be greater than or equal mapId");
         require(!mapInfo[mapId].isAllowed, "Mapper: IsAllowed must be false");
         mapInfo[mapId].isAllowed = true;
@@ -92,7 +108,7 @@ contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      * @notice See {IMapper-disableMapping}.
      * @param mapId See {IMapper-disableMapping}.
      */
-    function disableMapping(uint256 mapId) external onlyOwner {
+    function disableMapping(uint256 mapId) external onlyRole(EMERGENCY_ROLE) {
         require(mapCounter >= mapId, "Mapper: MapCounter must be greater than or equal mapId");
         require(mapInfo[mapId].isAllowed, "Mapper: IsAllowed must be true");
         mapInfo[mapId].isAllowed = false;
@@ -106,7 +122,12 @@ contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      */
     function registerMapping(
         MapInfo calldata newMapInfo
-    ) external onlyOwner nonZeroBytes32(newMapInfo.originTokenAddress) nonZeroBytes32(newMapInfo.targetTokenAddress) {
+    )
+        external
+        onlyRole(MULTISIG_ROLE)
+        nonZeroBytes32(newMapInfo.originTokenAddress)
+        nonZeroBytes32(newMapInfo.targetTokenAddress)
+    {
         ++mapCounter;
 
         if (newMapInfo.withdrawType == WithdrawType.None && newMapInfo.depositType != DepositType.None) {
@@ -156,7 +177,7 @@ contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      * @notice See {IMapper-removeMapping}.
      * @param mapId See {IMapper-removeMapping}.
      */
-    function removeMapping(uint256 mapId) external onlyOwner {
+    function removeMapping(uint256 mapId) external onlyRole(EMERGENCY_ROLE) {
         require(mapCounter >= mapId, "Mapper: MapCounter must be greater than or equal mapId");
 
         MapInfo memory _mapInfo = mapInfo[mapId];
@@ -181,15 +202,15 @@ contract MapperTest is Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, 
      */
     function supportsInterface(
         bytes4 interfaceId
-    ) public view virtual override(ERC165Upgradeable) returns (bool result) {
+    ) public view virtual override(AccessControlUpgradeable) returns (bool result) {
         return interfaceId == type(IMapper).interfaceId || super.supportsInterface({ interfaceId: interfaceId });
     }
 
     /**
      * @notice Authorizes the upgrade of the contract to a new implementation.
      * This function overrides `_authorizeUpgrade` from UUPSUpgradeable.
-     * Only the contract owner can authorize an upgrade.
+     * Only the MULTISIG role can authorize an upgrade.
      * @param newImplementation Address of the new implementation contract.
      */
-    function _authorizeUpgrade(address newImplementation) internal override(UUPSUpgradeable) onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override(UUPSUpgradeable) onlyRole(MULTISIG_ROLE) {}
 }

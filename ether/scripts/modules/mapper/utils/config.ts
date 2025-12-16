@@ -2,26 +2,14 @@ import {DepositType, MapInfo, WithdrawType} from "../interfaces/IMapper";
 import * as GlobalConfig from "../../../../test/utils/GlobalConfig";
 
 export const MainnetMapperRoutes = (): MapInfo[] => [
-// Bridge Mainnet >>> Whitechain USDT
-  {
-    originChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    depositType: DepositType.Lock,
-    withdrawType: WithdrawType.None,
-    originTokenAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", // Mainnet USDT
-    targetTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false
-  },
   // Bridge Mainnet >>> Whitechain USDC
   {
     originChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Mainnet USDC
-    targetTokenAddress: "0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7", // Whitechain USDC
+    originTokenAddress: GlobalConfig.ETHEREUM_MAINNET_USDC_ADDRESS, // Mainnet USDC
+    targetTokenAddress: GlobalConfig.WHITECHAIN_USDC_ADDRESS, // Whitechain USDC
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -32,20 +20,8 @@ export const MainnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x925206b8a707096Ed26ae47C84747fE0bb734F59", // Mainnet WBT
-    targetTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false
-  },
-  // Receive Mainnet <<< Whitechain USDT
-  {
-    originChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
-    depositType: DepositType.None,
-    withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    targetTokenAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7", // Mainnet USDT
+    originTokenAddress: GlobalConfig.ETHEREUM_MAINNET_WBT_ADDRESS, // Mainnet WBT
+    targetTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -56,8 +32,8 @@ export const MainnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7", // Whitechain USDC
-    targetTokenAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Mainnet USDC
+    originTokenAddress: GlobalConfig.WHITECHAIN_USDC_ADDRESS, // Whitechain USDC
+    targetTokenAddress: GlobalConfig.ETHEREUM_MAINNET_USDC_ADDRESS, // Mainnet USDC
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -68,8 +44,8 @@ export const MainnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
-    targetTokenAddress: "0x925206b8a707096Ed26ae47C84747fE0bb734F59", // Mainnet WBT
+    originTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
+    targetTokenAddress: GlobalConfig.ETHEREUM_MAINNET_WBT_ADDRESS, // Mainnet WBT
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -83,8 +59,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x11101b4a88093bebbd901be8cf398f64714a7009",
-    targetTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
+    originTokenAddress: GlobalConfig.SEPOLIA_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -95,8 +71,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x91b2e38c9b9acf8ef2b2c549bf7f86ff5b0108fd",
-    targetTokenAddress: "0x4320bdf56a5e84c631a990b51c489b9410b7a6cd",
+    originTokenAddress: GlobalConfig.SEPOLIA_USDC_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDC_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -107,8 +83,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x3c6bf6821d5cc721f6bf41490b0d2a6963d2b031",
-    targetTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
+    originTokenAddress: GlobalConfig.SEPOLIA_WBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -119,8 +95,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
-    targetTokenAddress: "0x11101b4a88093bebbd901be8cf398f64714a7009",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -131,8 +107,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x4320bdf56a5e84c631a990b51c489b9410b7a6cd",
-    targetTokenAddress: "0x91b2e38c9b9acf8ef2b2c549bf7f86ff5b0108fd",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDC_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_USDC_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -143,8 +119,8 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
-    targetTokenAddress: "0x3c6bf6821d5cc721f6bf41490b0d2a6963d2b031",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_WBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false
@@ -152,26 +128,14 @@ export const SepoliaMapperRoutes = (): MapInfo[] => [
 ];
 
 export const WhitechainMapperRoutes = (): MapInfo[] => [
-  // Bridge Whitechain >>> Mainnet USDT
-  {
-    originChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
-    depositType: DepositType.Lock,
-    withdrawType: WithdrawType.None,
-    originTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    targetTokenAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7", // Mainnet USDT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false,
-  },
   // Bridge Whitechain >>> Mainnet USDC
   {
     originChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7", // Whitechain USDC
-    targetTokenAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Mainnet USDC
+    originTokenAddress: GlobalConfig.WHITECHAIN_USDC_ADDRESS, // Whitechain USDC
+    targetTokenAddress: GlobalConfig.ETHEREUM_MAINNET_USDC_ADDRESS, // Mainnet USDC
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -182,23 +146,11 @@ export const WhitechainMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
-    targetTokenAddress: "0x925206b8a707096Ed26ae47C84747fE0bb734F59", // Mainnet WBT
+    originTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
+    targetTokenAddress: GlobalConfig.ETHEREUM_MAINNET_WBT_ADDRESS, // Mainnet WBT
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
-  },
-  // Bridge Whitechain >>> Tron USDT
-  {
-    originChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.TRON_MAINNET_ID.toString(),
-    depositType: DepositType.Lock,
-    withdrawType: WithdrawType.None,
-    originTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    targetTokenAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", // Tron USDT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false,
   },
   // Bridge Whitechain >>> Tron WBT
   {
@@ -206,23 +158,11 @@ export const WhitechainMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.TRON_MAINNET_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
-    targetTokenAddress: "TFptbWaARrWTX5Yvy3gNG5Lm8BmhPx82Bt", // Tron WBT
+    originTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
+    targetTokenAddress: GlobalConfig.TRON_WBT_ADDRESS, // Tron WBT
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
-  },
-  // Receive Whitechain <<< Mainnet USDT
-  {
-    originChainId: GlobalConfig.ETHEREUM_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    depositType: DepositType.None,
-    withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7", // Mainnet USDT
-    targetTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false,
   },
   // Receive Whitechain <<< Mainnet USDC
   {
@@ -230,8 +170,8 @@ export const WhitechainMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // Mainnet USDC
-    targetTokenAddress: "0xF97B9Bf62916f1EB42Dd906a7254603e7b9FC4a7", // Whitechain USDC
+    originTokenAddress: GlobalConfig.ETHEREUM_MAINNET_USDC_ADDRESS, // Mainnet USDC
+    targetTokenAddress: GlobalConfig.WHITECHAIN_USDC_ADDRESS, // Whitechain USDC
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -242,23 +182,11 @@ export const WhitechainMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x925206b8a707096Ed26ae47C84747fE0bb734F59", // Mainnet WBT
-    targetTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
+    originTokenAddress: GlobalConfig.ETHEREUM_MAINNET_WBT_ADDRESS, // Mainnet WBT
+    targetTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
-  },
-  // Receive Whitechain <<< Tron USDT
-  {
-    originChainId: GlobalConfig.TRON_MAINNET_ID.toString(),
-    targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
-    depositType: DepositType.None,
-    withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", // Tron USDT
-    targetTokenAddress: "0xF95604a4034d8407d3F1256De56C9ae37F299cb8", // Whitechain USDT
-    useTransfer: false,
-    isAllowed: true,
-    isCoin: false,
   },
   // Receive Whitechain <<< Tron WBT
   {
@@ -266,8 +194,8 @@ export const WhitechainMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_MAINNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "TFptbWaARrWTX5Yvy3gNG5Lm8BmhPx82Bt", // Tron WBT
-    targetTokenAddress: "0xb044a2a1e3C3deb17e3602bF088811d9bDc762EA", // Whitechain WWBT
+    originTokenAddress: GlobalConfig.TRON_WBT_ADDRESS, // Tron WBT
+    targetTokenAddress: GlobalConfig.WHITECHAIN_WWBT_ADDRESS, // Whitechain WWBT
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
@@ -281,8 +209,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
-    targetTokenAddress: "0x11101b4a88093bebbd901be8cf398f64714a7009",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -293,8 +221,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x4320bdf56a5e84c631a990b51c489b9410b7a6cd",
-    targetTokenAddress: "0x91b2e38c9b9acf8ef2b2c549bf7f86ff5b0108fd",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDC_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_USDC_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -305,8 +233,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.ETHEREUM_SEPOLIA_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
-    targetTokenAddress: "0x3c6bf6821d5cc721f6bf41490b0d2a6963d2b031",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.SEPOLIA_WBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
@@ -317,8 +245,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.TRON_NILE_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
-    targetTokenAddress: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.NILE_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -329,8 +257,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.TRON_NILE_ID.toString(),
     depositType: DepositType.Lock,
     withdrawType: WithdrawType.None,
-    originTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
-    targetTokenAddress: "TGa8yeUzkCmuajSedYoPiA9bA8YBnvXvEL",
+    originTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.NILE_WBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
@@ -341,8 +269,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x11101b4a88093bebbd901be8cf398f64714a7009",
-    targetTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
+    originTokenAddress: GlobalConfig.SEPOLIA_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -353,8 +281,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x91b2e38c9b9acf8ef2b2c549bf7f86ff5b0108fd",
-    targetTokenAddress: "0x4320bdf56a5e84c631a990b51c489b9410b7a6cd",
+    originTokenAddress: GlobalConfig.SEPOLIA_USDC_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDC_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -365,8 +293,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "0x3c6bf6821d5cc721f6bf41490b0d2a6963d2b031",
-    targetTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
+    originTokenAddress: GlobalConfig.SEPOLIA_WBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: true,
@@ -377,8 +305,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
-    targetTokenAddress: "0xb029c90b1642b507ba924bfc8cbc2826dc19ec4b",
+    originTokenAddress: GlobalConfig.NILE_USDT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_USDT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: false,
@@ -389,8 +317,8 @@ export const WhitechainTestnetMapperRoutes = (): MapInfo[] => [
     targetChainId: GlobalConfig.WHITECHAIN_TESTNET_ID.toString(),
     depositType: DepositType.None,
     withdrawType: WithdrawType.Unlock,
-    originTokenAddress: "TGa8yeUzkCmuajSedYoPiA9bA8YBnvXvEL",
-    targetTokenAddress: "0x1cd97ab75c1ffdfda5a231ee9626deec7d46165b",
+    originTokenAddress: GlobalConfig.NILE_WBT_ADDRESS,
+    targetTokenAddress: GlobalConfig.WHITECHAIN_TESTNET_WWBT_ADDRESS,
     useTransfer: false,
     isAllowed: true,
     isCoin: true,

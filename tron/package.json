@@ -13,7 +13,10 @@
     "deploy-Bridge:mainnet": "CONTRACT=Bridge npx tronbox migrate --network mainnet",
 
     "scripts-Mapper-setup:mainnet": "SETUP=Mapper npx tronbox migrate --network mainnet --f 3 --to 3",
-    "scripts-Mapper-setup:nile": "SETUP=Mapper npx tronbox migrate --network nile --f 3 --to 3"
+    "scripts-Mapper-setup:nile": "SETUP=Mapper npx tronbox migrate --network nile --f 3 --to 3",
+
+    "scripts-Bridge-setup:mainnet": "SETUP=Bridge npx tronbox migrate --network mainnet --f 4 --to 4",
+    "scripts-Bridge-setup:nile": "SETUP=Bridge npx tronbox migrate --network nile --f 4 --to 4"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^4.9.5",

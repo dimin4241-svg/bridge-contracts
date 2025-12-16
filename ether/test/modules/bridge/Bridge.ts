@@ -17,11 +17,8 @@ describe("Bridge", function () {
 
   let IS_LOCALHOST = true;
   let MapperContract: any;
-  let MapperFactory: any;
   let BridgeContract: any;
   let BridgeFactory: any;
-  let initializeMapperContract: any;
-  let initializeBridgeContract: any;
   let Token0: any;
   let Token1: any;
   let Token2: any;
@@ -29,16 +26,20 @@ describe("Bridge", function () {
   let Token4: any;
   let Token5: any;
 
-  let bridgeArgs: IBridge.InitParams;
+  let bridgeInitParams: IBridge.InitParams;
+  let mapperInitParams: IMapper.InitParams;
 
   let deployer: SignerWithAddress;
-  let user0: SignerWithAddress;
+  let emergencyAddress: SignerWithAddress;
+  let multisigAddress: SignerWithAddress;
+  let relayerAddress: SignerWithAddress;
   let user1: SignerWithAddress;
   let user2: SignerWithAddress;
   let user3: SignerWithAddress;
-  let user4: SignerWithAddress;
 
-  const tokensPositionId = 0;
+  const EMERGENCY_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("EMERGENCY_ROLE"));
+  const MULTISIG_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("MULTISIG_ROLE"));
+  const RELAYER_ROLE = hre.ethers.keccak256(hre.ethers.toUtf8Bytes("RELAYER_ROLE"));
 
   enum typesMix {
     None_None,
@@ -71,11 +72,12 @@ describe("Bridge", function () {
     const accounts = await hre.ethers.getSigners();
 
     deployer = accounts[0];
-    user0 = accounts[1];
-    user1 = accounts[2];
-    user2 = accounts[3];
-    user3 = accounts[4];
-    user4 = accounts[4];
+    emergencyAddress = accounts[1];
+    multisigAddress = accounts[2];
+    relayerAddress = accounts[3];
+    user1 = accounts[4];
+    user2 = accounts[5];
+    user3 = accounts[6];
 
     Token0 = await deployExampleToken();
     Token1 = await deployExampleToken();
@@ -84,36 +86,41 @@ describe("Bridge", function () {
     Token4 = await deployExampleToken();
     Token5 = await deployExampleToken();
 
-    const {contract, contractFactory, initialize} = await coreDeployment.deployUUPSProxy(
+    mapperInitParams = {
+      emergencyAddress: emergencyAddress.address,
+      multisigAddress: multisigAddress.address
+    };
+
+    const {contract} = await coreDeployment.deployUUPSProxy(
         IS_LOCALHOST,
         GlobalConfig.MAIN_UTILS_ROUTE + "mapper/" + GlobalConfig.MAPPER_CONTRACT_NAME + ".sol:" + GlobalConfig.MAPPER_CONTRACT_NAME,
         deployer,
-        {}
+        'initialize',
+        mapperInitParams
     );
 
     MapperContract = contract as unknown as Mapper;
-    MapperFactory = contractFactory;
-    initializeMapperContract = initialize;
 
-    bridgeArgs = {
-      mapperAddress: await MapperContract.getAddress()
+    bridgeInitParams = {
+      mapperAddress: await MapperContract.getAddress(),
+      emergencyAddress: emergencyAddress.address,
+      multisigAddress: multisigAddress.address,
+      relayerAddress: relayerAddress.address
     };
 
     const {
       contract: contract2,
       contractFactory: contractFactory2,
-      initialize: initialize2
     } = await coreDeployment.deployUUPSProxy(
         IS_LOCALHOST,
         GlobalConfig.BRIDGE_CONTRACT_NAME,
         deployer,
-        bridgeArgs
+        'initialize',
+        bridgeInitParams
     );
 
     BridgeContract = contract2 as unknown as Bridge;
     BridgeFactory = contractFactory2;
-    initializeBridgeContract = initialize2;
-
   });
 
   async function setMapInfo(tokensPositionId: number, useTransfer: boolean, isAllowed: boolean, isCoin: boolean): Promise<IMapper.MapInfo> {
@@ -175,7 +182,7 @@ describe("Bridge", function () {
       if (!isBrokenMapper && !allowedIds.token.has(idTokens)) continue;
 
       let mapInfo = await setMapInfo(idTokens, useTransfer, isAllowed, false);
-      const registerMappingTransaction = await _mapperContract.registerMapping(mapInfo);
+      const registerMappingTransaction = await _mapperContract.connect(multisigAddress).registerMapping(mapInfo);
       expect(registerMappingTransaction).to.not.be.reverted;
     }
 
@@ -183,7 +190,7 @@ describe("Bridge", function () {
       if (!isBrokenMapper && !allowedIds.coin.has(idCoin)) continue;
 
       let mapInfo = await setMapInfo(idCoin,useTransfer, isAllowed, true);
-      const registerMappingTransaction = await _mapperContract.registerMapping(mapInfo);
+      const registerMappingTransaction = await _mapperContract.connect(multisigAddress).registerMapping(mapInfo);
       expect(registerMappingTransaction).to.not.be.reverted;
     }
   }
@@ -201,9 +208,8 @@ describe("Bridge", function () {
     const _saltHex = hre.ethers.toBeHex(_salt, 32);
     let mapInfo: IMapper.MapInfo = await _mapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
     const message = hre.ethers.solidityPackedKeccak256(
-        ["address", "address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64", "bytes32"],
+        ["address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64", "bytes32"],
         [
-          deployer.address,
           add,
           hre.ethers.zeroPadValue(bridgeParams.bridgeParams.toAddress, 32),
           mapInfo.targetTokenAddress,
@@ -216,7 +222,7 @@ describe("Bridge", function () {
         ],
     );
     const messageBuffer = Buffer.from(message.slice(2), "hex");
-    const privateKeyBuffer = Buffer.from(GlobalConfig.PRIVATE_KEY_ACC_0.slice(2), "hex");
+    const privateKeyBuffer = Buffer.from(GlobalConfig.PRIVATE_KEY_ACC_3.slice(2), "hex");
     const ethMessageHash = ethUtil.hashPersonalMessage(messageBuffer);
     const signature = ethUtil.ecsign(ethMessageHash, privateKeyBuffer);
     const v: bigint = BigInt(signature.v);
@@ -250,7 +256,7 @@ describe("Bridge", function () {
           originTokenAddress
       );
 
-      let transactionResponse = await tokenContract.approve(
+      await tokenContract.approve(
           await BridgeContract.getAddress(),
           amount
       );
@@ -324,7 +330,7 @@ describe("Bridge", function () {
           await hre.ethers.getContractFactory(GlobalConfig.BRIDGE_TEST_CONTRACT_NAME);
       const contract = await hre.upgrades.upgradeProxy(
           BridgeContract.target,
-          BridgeTest.connect(deployer)
+          BridgeTest.connect(multisigAddress)
       );
       let UpgradedBridge = contract as unknown as BridgeTest;
       await expect(UpgradedBridge).to.not.be.reverted;
@@ -333,7 +339,7 @@ describe("Bridge", function () {
       ).to.be.equal(0);
     });
 
-    it("Unable to _authorizeUpgrade without Ownable", async function () {
+    it("Unable to _authorizeUpgrade without MULTISIG role", async function () {
       const BridgeTest =
           await hre.ethers.getContractFactory(GlobalConfig.BRIDGE_TEST_CONTRACT_NAME);
       await expect(
@@ -341,7 +347,7 @@ describe("Bridge", function () {
               BridgeContract.target,
               BridgeTest.connect(user1)
           ),
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
     });
 
   });
@@ -350,49 +356,89 @@ describe("Bridge", function () {
 
     it("Cannot re-initialize Bridge contract", async function () {
       await expect(
-          BridgeContract.initialize(bridgeArgs),
+          BridgeContract.initialize(bridgeInitParams),
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
 
     it("Should fail to initialize with zero mapperAddress", async function () {
-      bridgeArgs.mapperAddress = ZeroAddress;
+      bridgeInitParams.mapperAddress = ZeroAddress;
 
       const Bridge = await hre.upgrades.deployProxy(
           BridgeFactory,
-          [bridgeArgs],
+          [bridgeInitParams],
           {initializer: false},
       );
       await expect(
-          Bridge.initialize(bridgeArgs),
+          Bridge.initialize(bridgeInitParams),
+      ).to.be.revertedWith("Bridge: Address must be not equal zero");
+    });
+
+    it("Should fail to initialize with zero EMERGENCY address", async function () {
+      bridgeInitParams.emergencyAddress = ZeroAddress;
+
+      const Bridge = await hre.upgrades.deployProxy(
+          BridgeFactory,
+          [bridgeInitParams],
+          {initializer: false},
+      );
+      await expect(
+          Bridge.initialize(bridgeInitParams),
+      ).to.be.revertedWith("Bridge: Address must be not equal zero");
+    });
+
+    it("Should fail to initialize with zero MULTISIG address", async function () {
+      bridgeInitParams.multisigAddress = ZeroAddress;
+
+      const Bridge = await hre.upgrades.deployProxy(
+          BridgeFactory,
+          [bridgeInitParams],
+          {initializer: false},
+      );
+      await expect(
+          Bridge.initialize(bridgeInitParams),
+      ).to.be.revertedWith("Bridge: Address must be not equal zero");
+    });
+
+    it("Should fail to initialize with zero RELAYER address", async function () {
+      bridgeInitParams.relayerAddress = ZeroAddress;
+
+      const Bridge = await hre.upgrades.deployProxy(
+          BridgeFactory,
+          [bridgeInitParams],
+          {initializer: false},
+      );
+      await expect(
+          Bridge.initialize(bridgeInitParams),
       ).to.be.revertedWith("Bridge: Address must be not equal zero");
     });
 
     it("Should fail to initialize when Mapper address does not support IMapper", async function () {
 
-      bridgeArgs.mapperAddress = user3.address;
+      bridgeInitParams.mapperAddress = user1.address;
 
       const Bridge = await hre.upgrades.deployProxy(
           BridgeFactory,
-          [bridgeArgs],
+          [bridgeInitParams],
           {initializer: false},
       );
       await expect(
-          Bridge.initialize(bridgeArgs),
+          Bridge.initialize(bridgeInitParams),
       ).to.be.revertedWith("Bridge: New address does not support IMapper");
     });
   });
 
   async function createMapperBrokenContract() {
-    const {contract, contractFactory, initialize} = await coreDeployment.deployUUPSProxy(
+    const {contract} = await coreDeployment.deployUUPSProxy(
         IS_LOCALHOST,
         GlobalConfig.TEST_UTILS_ROUTE + "stub/mapper-broken/" + GlobalConfig.MAPPER_CONTRACT_NAME + ".sol:" + GlobalConfig.MAPPER_CONTRACT_NAME,
         deployer,
-        {}
+        'initialize',
+        mapperInitParams
     );
 
     let mapperBrokenContract: any = contract as unknown as Mapper;
 
-    let changeMapperAddress = await BridgeContract.changeMapperAddress(await mapperBrokenContract.getAddress());
+    let changeMapperAddress = await BridgeContract.connect(multisigAddress).changeMapperAddress(await mapperBrokenContract.getAddress());
     expect(changeMapperAddress).to.not.be.reverted;
     return mapperBrokenContract;
   }
@@ -406,7 +452,7 @@ describe("Bridge", function () {
 
       let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
-      const result = await hre.network.provider.send("eth_call", [
+      await hre.network.provider.send("eth_call", [
         {
           from: deployer.address,
           to: BridgeContract.target,
@@ -498,7 +544,7 @@ describe("Bridge", function () {
               mapInfo.targetChainId
           );
 
-      const tokenContract = await hre.ethers.getContractAt(
+      await hre.ethers.getContractAt(
           GlobalConfig.EXAMPLE_TOKEN_CONTRACT_NAME,
           mapInfo.originTokenAddress
       );
@@ -608,7 +654,7 @@ describe("Bridge", function () {
       await registerMappings();
 
       const bridgeParams = await setBridgeParams(undefined, undefined, undefined, undefined, 0n);
-      const ECDSA = await ECDSAFixture(undefined ,bridgeParams);
+      const ECDSA = await ECDSAFixture(undefined, bridgeParams);
 
       await expect(
           BridgeContract.bridgeTokens([
@@ -706,7 +752,7 @@ describe("Bridge", function () {
           amount
       );
       await registerMappings();
-      await MapperContract.registerMapping({
+      await MapperContract.connect(multisigAddress).registerMapping({
         originChainId: BigInt(GlobalConfig.HARDHAT_ID),
         targetChainId: BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID),
         depositType: IMapper.DepositType.Burn,
@@ -797,6 +843,93 @@ describe("Bridge", function () {
       );
     });
 
+    it("Should fail to bridgeTokens with expired deadline", async function () {
+      await registerMappings();
+      const bridgeParams = await setBridgeParams();
+      
+      // Create ECDSA with expired deadline (past timestamp)
+      const _deadline: bigint = BigInt(await time.latest()) - BigInt(3600); // 1 hour in the past
+      const _salt: bigint = BigInt(await time.latest()) + BigInt(3600);
+      const _saltHex = hre.ethers.toBeHex(_salt, 32);
+      let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      const message = hre.ethers.solidityPackedKeccak256(
+          ["address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64", "bytes32"],
+          [
+            deployer.address,
+            hre.ethers.zeroPadValue(bridgeParams.bridgeParams.toAddress, 32),
+            mapInfo.targetTokenAddress,
+            bridgeParams.gasAmount,
+            bridgeParams.bridgeParams.amount,
+            mapInfo.originChainId,
+            mapInfo.targetChainId,
+            _deadline,
+            _saltHex
+          ],
+      );
+      const messageBuffer = Buffer.from(message.slice(2), "hex");
+      const privateKeyBuffer = Buffer.from(GlobalConfig.PRIVATE_KEY_ACC_3.slice(2), "hex");
+      const ethMessageHash = ethUtil.hashPersonalMessage(messageBuffer);
+      const signature = ethUtil.ecsign(ethMessageHash, privateKeyBuffer);
+      const v: bigint = BigInt(signature.v);
+      const r = `0x${signature.r.toString("hex")}`;
+      const s = `0x${signature.s.toString("hex")}`;
+
+      const ECDSA: IBridge.ECDSAParams = {r, s, salt: _saltHex, deadline: _deadline, v};
+
+      await expect(
+          BridgeContract.bridgeTokens([
+            bridgeParams.bridgeParams,
+            ECDSA
+          ], {
+            value: bridgeParams.gasAmount
+          })
+      ).to.be.revertedWith("ECDSAChecks: Signature Expired");
+    });
+
+    it("Should fail to bridgeTokens when signer does not have RELAYER_ROLE", async function () {
+      await registerMappings();
+      const bridgeParams = await setBridgeParams();
+      
+      // Create ECDSA signed with a different private key (user1) that doesn't have RELAYER_ROLE
+      const _deadline: bigint = BigInt(await time.latest()) + BigInt(3600);
+      const _salt: bigint = BigInt(await time.latest()) + BigInt(3600);
+      const _saltHex = hre.ethers.toBeHex(_salt, 32);
+      let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      const message = hre.ethers.solidityPackedKeccak256(
+          ["address", "bytes32", "bytes32", "uint256", "uint256", "uint256", "uint256", "uint64", "bytes32"],
+          [
+            deployer.address,
+            hre.ethers.zeroPadValue(bridgeParams.bridgeParams.toAddress, 32),
+            mapInfo.targetTokenAddress,
+            bridgeParams.gasAmount,
+            bridgeParams.bridgeParams.amount,
+            mapInfo.originChainId,
+            mapInfo.targetChainId,
+            _deadline,
+            _saltHex
+          ],
+      );
+      const messageBuffer = Buffer.from(message.slice(2), "hex");
+      // Use PRIVATE_KEY_ACC_4 which corresponds to user1 (accounts[4]) who doesn't have RELAYER_ROLE
+      const privateKeyBuffer = Buffer.from(GlobalConfig.PRIVATE_KEY_ACC_4.slice(2), "hex");
+      const ethMessageHash = ethUtil.hashPersonalMessage(messageBuffer);
+      const signature = ethUtil.ecsign(ethMessageHash, privateKeyBuffer);
+      const v: bigint = BigInt(signature.v);
+      const r = `0x${signature.r.toString("hex")}`;
+      const s = `0x${signature.s.toString("hex")}`;
+
+      const ECDSA: IBridge.ECDSAParams = {r, s, salt: _saltHex, deadline: _deadline, v};
+
+      await expect(
+          BridgeContract.bridgeTokens([
+            bridgeParams.bridgeParams,
+            ECDSA
+          ], {
+            value: bridgeParams.gasAmount
+          })
+      ).to.be.revertedWith("Bridge: Signer must have RELAYER_ROLE");
+    });
+
   });
 
   async function chargeTokensBridgeContract() {
@@ -829,6 +962,32 @@ describe("Bridge", function () {
     expect(bridgeTokensTransaction).to.not.be.reverted;
   }
 
+  /**
+   * Sets daily limit for a token or coin for the relayer.
+   * @param mapId The map ID to get token address from. If undefined, sets limit for coins (bytes32(0)).
+   * @param limit The daily limit amount. Defaults to 1000000n.
+   * @param relayer The relayer address. Defaults to relayerAddress.address.
+   */
+  async function setDailyLimitForReceiveTokens(
+    mapInfo: IMapper.MapInfo,
+    limit: bigint = 1000000n,
+    relayer: string = relayerAddress.address
+  ) {
+    let tokenAddress: string;
+    
+    if (mapInfo.isCoin) {
+      tokenAddress = hre.ethers.ZeroHash; // bytes32(0) for coins
+    } else {
+      tokenAddress = hre.ethers.zeroPadValue(mapInfo.targetTokenAddress, 32);
+    }
+    
+    await BridgeContract.connect(multisigAddress).setDailyLimit(
+      tokenAddress,
+      relayer,
+      limit
+    );
+  }
+
   describe("receiveTokens", async function () {
 
     it("Should be able to receiveTokens Tokens", async function () {
@@ -836,8 +995,11 @@ describe("Bridge", function () {
       await chargeTokensBridgeContract();
       let externalId = hre.ethers.encodeBytes32String("externalId");
       let amount = 1000n;
+      
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(typesMix.None_Unlock);
+      await setDailyLimitForReceiveTokens(mapInfo);
 
-      const receiveTokensTransaction = await BridgeContract.receiveTokens([
+      const receiveTokensTransaction = await BridgeContract.connect(relayerAddress).receiveTokens([
         externalId,
         typesMix.None_Unlock,
         amount,
@@ -846,7 +1008,6 @@ describe("Bridge", function () {
       ]);
       expect(receiveTokensTransaction).to.not.be.reverted;
 
-      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(typesMix.None_Unlock);
 
       await expect(receiveTokensTransaction)
           .to.emit(BridgeContract, "Withdrawal")
@@ -867,7 +1028,7 @@ describe("Bridge", function () {
       );
 
       await expect(receiveTokensTransaction).to.changeTokenBalances(
-              tokenContract,
+          tokenContract,
           [user2.address, BridgeContract],
           [amount, -amount],
           );
@@ -881,7 +1042,10 @@ describe("Bridge", function () {
       let amount = 1000n;
       const bridgeParams = await setBridgeParams(typesMix.None_Mint);
 
-      const receiveTokensTransaction = await BridgeContract.receiveTokens([
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
+
+      const receiveTokensTransaction = await BridgeContract.connect(relayerAddress).receiveTokens([
         externalId,
         bridgeParams.bridgeParams.mapId,
         amount,
@@ -890,7 +1054,6 @@ describe("Bridge", function () {
       ]);
       expect(receiveTokensTransaction).to.not.be.reverted;
 
-      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
       await expect(receiveTokensTransaction)
           .to.emit(BridgeContract, "Withdrawal")
@@ -924,10 +1087,12 @@ describe("Bridge", function () {
       const bridgeParams = await setBridgeParams(typesMix.None_None, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
       let externalId = hre.ethers.encodeBytes32String("externalId");
       let amount = 1000n;
-      let mapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             bridgeParams.bridgeParams.mapId,
             amount,
@@ -946,7 +1111,10 @@ describe("Bridge", function () {
       let amount = 1000n;
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
 
-      const receiveTokensTransaction = await BridgeContract.receiveTokens([
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
+
+      const receiveTokensTransaction = await BridgeContract.connect(relayerAddress).receiveTokens([
         externalId,
         bridgeParams.bridgeParams.mapId,
         amount,
@@ -954,8 +1122,6 @@ describe("Bridge", function () {
         hre.ethers.zeroPadValue(user2.address, 32)
       ]);
       expect(receiveTokensTransaction).to.not.be.reverted;
-
-      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
       await expect(receiveTokensTransaction)
           .to.emit(BridgeContract, "Withdrawal")
@@ -986,8 +1152,11 @@ describe("Bridge", function () {
       let amount = 1000n;
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
 
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
+
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             bridgeParams.bridgeParams.mapId,
             amount,
@@ -1006,10 +1175,12 @@ describe("Bridge", function () {
       const bridgeParams = await setBridgeParams(typesMix.None_None, undefined, undefined, true, undefined, undefined, undefined, undefined, true);
       let externalId = hre.ethers.encodeBytes32String("externalId");
       let amount = 1000n;
-      let mapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             bridgeParams.bridgeParams.mapId,
             amount,
@@ -1028,8 +1199,11 @@ describe("Bridge", function () {
       let amount = 10000n;
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
 
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
+
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             bridgeParams.bridgeParams.mapId,
             amount,
@@ -1040,7 +1214,7 @@ describe("Bridge", function () {
 
     });
 
-    it("Should fail receiveTokens if sender is NOT Owner", async function () {
+    it("Should fail receiveTokens if sender has NOT RELAYER role", async function () {
       await registerMappings();
       await chargeTokensBridgeContract();
       let externalId = hre.ethers.encodeBytes32String("externalId");
@@ -1054,7 +1228,7 @@ describe("Bridge", function () {
             hre.ethers.zeroPadValue(user1.address, 32),
             hre.ethers.zeroPadValue(user2.address, 32)
           ])
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user2.address.toLowerCase()} is missing role ${RELAYER_ROLE}`);
     });
 
     it("Should fail receiveTokens with zero fromAddress", async function () {
@@ -1064,7 +1238,7 @@ describe("Bridge", function () {
       let amount = 1000n;
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             typesMix.None_Unlock,
             amount,
@@ -1081,7 +1255,7 @@ describe("Bridge", function () {
       let amount = 1000n;
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             typesMix.None_Unlock,
             amount,
@@ -1098,7 +1272,7 @@ describe("Bridge", function () {
       let amount = 0n;
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             typesMix.None_Unlock,
             amount,
@@ -1115,7 +1289,7 @@ describe("Bridge", function () {
       let amount = 1000n;
 
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             typesMix.None_Unlock,
             amount,
@@ -1130,9 +1304,9 @@ describe("Bridge", function () {
       await chargeTokensBridgeContract();
       let externalId = hre.ethers.encodeBytes32String("externalId");
       let amount = 1000n;
-      let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(typesMix.Lock_None);
+
       await expect(
-          BridgeContract.receiveTokens([
+          BridgeContract.connect(relayerAddress).receiveTokens([
             externalId,
             typesMix.Lock_None,
             amount,
@@ -1150,14 +1324,13 @@ describe("Bridge", function () {
           [GlobalConfig.ETHER_1 * 100_000_000n]
       );
       let amount = 22n;
-      let gasAmount = 200n;
-      let transactionResponse = await contract.approve(
+      await contract.approve(
           await BridgeContract.getAddress(),
           amount
       );
 
       await registerMappings();
-      await MapperContract.registerMapping({
+      await MapperContract.connect(multisigAddress).registerMapping({
         originChainId: BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID),
         targetChainId: BigInt(GlobalConfig.HARDHAT_ID),
         depositType: IMapper.DepositType.None,
@@ -1170,6 +1343,8 @@ describe("Bridge", function () {
       });
 
       let mapId = await MapperContract.mapCounter();
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      await setDailyLimitForReceiveTokens(mapInfo);
 
       let externalId = hre.ethers.encodeBytes32String("externalId");
 
@@ -1182,7 +1357,7 @@ describe("Bridge", function () {
       };
 
       await expect(
-        BridgeContract.receiveTokens(receiveTokensParams)
+        BridgeContract.connect(relayerAddress).receiveTokens(receiveTokensParams)
       ).to.be.revertedWith("ReentrancyGuard: reentrant call");
 
     });
@@ -1193,7 +1368,10 @@ describe("Bridge", function () {
       let externalId = hre.ethers.encodeBytes32String("externalId");
       let amount = 1000n;
 
-      const receiveTokensTransaction = await BridgeContract.receiveTokens([
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(typesMix.None_Unlock);
+      await setDailyLimitForReceiveTokens(mapInfo);
+
+      const receiveTokensTransaction = await BridgeContract.connect(relayerAddress).receiveTokens([
         externalId,
         typesMix.None_Unlock,
         amount,
@@ -1201,8 +1379,6 @@ describe("Bridge", function () {
         hre.ethers.zeroPadValue(user2.address, 32)
       ]);
       expect(receiveTokensTransaction).to.not.be.reverted;
-
-      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(typesMix.None_Unlock);
 
       await expect(receiveTokensTransaction)
           .to.emit(BridgeContract, "Withdrawal")
@@ -1238,6 +1414,485 @@ describe("Bridge", function () {
 
     });
 
+    it("Should enforce daily limit for token withdrawals", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(
+              mapInfo.targetTokenAddress,
+              relayerAddress.address,
+              limit
+          )
+      ).to.emit(BridgeContract, "DailyLimitSet")
+          .withArgs(
+              mapInfo.targetTokenAddress,
+              relayerAddress.address,
+              limit,
+              0n
+          );
+
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        limit - 100n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        100n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+
+      const exceedingReceiveParams = [
+        externalId,
+        mapId,
+        1n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(exceedingReceiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit exceeded");
+    });
+
+    it("Should enforce daily limit for coin withdrawals", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+      await chargeCoinsBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const limit = 1000n;
+      const coinKey = hre.ethers.ZeroHash;
+
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(
+              coinKey,
+              relayerAddress.address,
+              limit
+          )
+      ).to.emit(BridgeContract, "DailyLimitSet")
+          .withArgs(
+              coinKey,
+              relayerAddress.address,
+              limit,
+              0n
+          );
+
+      const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
+      const firstReceiveParams = [
+        externalId,
+        bridgeParams.bridgeParams.mapId,
+        limit - 100n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      const secondReceiveParams = [
+        externalId,
+        bridgeParams.bridgeParams.mapId,
+        100n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+
+      const exceedingReceiveParams = [
+        externalId,
+        bridgeParams.bridgeParams.mapId,
+        1n,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(exceedingReceiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit exceeded");
+    });
+
+    it("Should accumulate volume within 24-hour rolling window", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+
+      // Set daily limit
+      await BridgeContract.connect(multisigAddress).setDailyLimit(
+          mapInfo.targetTokenAddress,
+          relayerAddress.address,
+          limit
+      );
+
+      // Get current timestamp
+      const startTimestamp = BigInt(await time.latest());
+      
+      // Make first transaction - this sets dayStartTimestamp
+      const firstAmount = 600n;
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        firstAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      // Advance time by 1 hour (still within 24-hour window)
+      const oneHourLater = startTimestamp + 3600n;
+      await time.setNextBlockTimestamp(Number(oneHourLater));
+      await hre.ethers.provider.send("evm_mine", []);
+
+      // Make second transaction - volume should accumulate
+      const secondAmount = 300n;
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        secondAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+
+      // Now try to exceed the limit - this should fail because 600 + 300 = 900, 
+      // and we're trying to add 101 more, which would exceed 1000
+      const exceedingAmount = 101n;
+      const exceedingReceiveParams = [
+        externalId,
+        mapId,
+        exceedingAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(exceedingReceiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit exceeded");
+
+      // But we should be able to add exactly the remaining amount (100)
+      const remainingAmount = 100n;
+      const remainingReceiveParams = [
+        externalId,
+        mapId,
+        remainingAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(remainingReceiveParams)
+      ).to.not.be.reverted;
+    });
+
+    it("Should reset volume after 24 hours have passed", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+
+      // Set daily limit
+      await BridgeContract.connect(multisigAddress).setDailyLimit(
+          mapInfo.targetTokenAddress,
+          relayerAddress.address,
+          limit
+      );
+
+      // Get current timestamp
+      const startTimestamp = BigInt(await time.latest());
+      
+      // Make first transaction - this sets dayStartTimestamp
+      const firstAmount = 600n;
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        firstAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      // Advance time by more than 24 hours (25 hours)
+      // This should reset the volume since 24 hours have passed since dayStartTimestamp
+      const twentyFiveHoursLater = startTimestamp + 86400n + 3600n; // 25 hours
+      await time.setNextBlockTimestamp(Number(twentyFiveHoursLater));
+      await hre.ethers.provider.send("evm_mine", []);
+
+      // Make a transaction - volume should have reset, so we can use the full limit (1000)
+      const secondAmount = 1000n; // Full limit should be allowed since volume was reset
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        secondAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+    });
+
+    it("Should not reset volume when within 24 hours and not first transaction", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+
+      // Set daily limit
+      await BridgeContract.connect(multisigAddress).setDailyLimit(
+          mapInfo.targetTokenAddress,
+          relayerAddress.address,
+          limit
+      );
+
+      // Make first transaction - this initializes dayStartTimestamp
+      // Since dayStartTimestamp starts at 0, the condition currentTime >= 0 + oneDay
+      // will be true (assuming currentTime > 86400), so it resets and sets dayStartTimestamp
+      const firstAmount = 100n;
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        firstAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      // Get the timestamp after first transaction to calculate relative time
+      const firstTransactionTimestamp = BigInt(await time.latest());
+
+      // Advance time by 12 hours (still within 24-hour window)
+      // This ensures: currentTime < dayStartTimestamp + oneDay
+      // So the condition at line 286 evaluates to false and volume accumulates
+      const twelveHoursLater = firstTransactionTimestamp + 43200n; // 12 hours
+      await time.setNextBlockTimestamp(Number(twelveHoursLater));
+      await hre.ethers.provider.send("evm_mine", []);
+
+      // Make second transaction - should NOT reset volume
+      // The condition currentTime >= dayStartTimestamp + oneDay is false
+      // so volume accumulates: 100 + 200 = 300
+      const secondAmount = 200n;
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        secondAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+
+      // Verify volume accumulated (100 + 200 = 300)
+      // Make another transaction to verify volume is still accumulating
+      const thirdAmount = 300n;
+      const thirdReceiveParams = [
+        externalId,
+        mapId,
+        thirdAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(thirdReceiveParams)
+      ).to.not.be.reverted;
+
+      // Total should be 100 + 200 + 300 = 600, which is within limit
+      // Try to add 401 more, which would exceed limit (600 + 401 = 1001 > 1000)
+      const exceedingAmount = 401n;
+      const exceedingReceiveParams = [
+        externalId,
+        mapId,
+        exceedingAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(exceedingReceiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit exceeded");
+    });
+
+    it("Should fail when daily limit is not set", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const amount = 100n;
+
+      const receiveParams = [
+        externalId,
+        mapId,
+        amount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(receiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit for relayer must be set");
+    });
+
+    it("Should correctly handle day window reset", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+      await setDailyLimitForReceiveTokens(mapInfo, limit);
+
+      // Make first transaction
+      const firstAmount = 500n;
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        firstAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      // Advance time by exactly 24 hours
+      const currentTime = BigInt(await time.latest());
+      const exactly24HoursLater = currentTime + 86400n; // exactly 24 hours
+      await time.setNextBlockTimestamp(Number(exactly24HoursLater));
+      await hre.ethers.provider.send("evm_mine", []);
+
+      // Make second transaction - volume should reset, allowing full limit
+      const secondAmount = 1000n; // Full limit should be allowed
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        secondAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+    });
+
+    it("Should correctly accumulate volume", async function () {
+      await registerMappings();
+      await chargeTokensBridgeContract();
+
+      const externalId = hre.ethers.encodeBytes32String("externalId");
+      const mapId = typesMix.None_Unlock;
+      const mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
+      const limit = 1000n;
+      await setDailyLimitForReceiveTokens(mapInfo, limit);
+
+      // First transaction: 300
+      const firstAmount = 300n;
+      const firstReceiveParams = [
+        externalId,
+        mapId,
+        firstAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(firstReceiveParams)
+      ).to.not.be.reverted;
+
+      // Second transaction: 400 (total: 700)
+      const secondAmount = 400n;
+      const secondReceiveParams = [
+        externalId,
+        mapId,
+        secondAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(secondReceiveParams)
+      ).to.not.be.reverted;
+
+      // Third transaction: 300 (total: 1000, exactly at limit)
+      const thirdAmount = 300n;
+      const thirdReceiveParams = [
+        externalId,
+        mapId,
+        thirdAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(thirdReceiveParams)
+      ).to.not.be.reverted;
+
+      // Fourth transaction: 1 (total: 1001, exceeds limit)
+      const fourthAmount = 1n;
+      const fourthReceiveParams = [
+        externalId,
+        mapId,
+        fourthAmount,
+        hre.ethers.zeroPadValue(user1.address, 32),
+        hre.ethers.zeroPadValue(user2.address, 32)
+      ];
+
+      await expect(
+          BridgeContract.connect(relayerAddress).receiveTokens(fourthReceiveParams)
+      ).to.be.revertedWith("Bridge: Daily limit exceeded");
+    });
+
   });
 
   describe("changeMapperAddress", async function () {
@@ -1246,15 +1901,16 @@ describe("Bridge", function () {
       const oldMapperAddress = await BridgeContract.Mapper();
       expect(oldMapperAddress).to.be.equal(await MapperContract.getAddress());
 
-      const {contract, contractFactory, initialize} = await coreDeployment.deployUUPSProxy(
+      const {contract} = await coreDeployment.deployUUPSProxy(
           IS_LOCALHOST,
           GlobalConfig.MAIN_UTILS_ROUTE + "mapper/" + GlobalConfig.MAPPER_CONTRACT_NAME + ".sol:" + GlobalConfig.MAPPER_CONTRACT_NAME,
           deployer,
-          {}
+          'initialize',
+          mapperInitParams
       );
 
       const newMapparAddress = await contract.getAddress();
-      const changeMapperAddress = await BridgeContract.changeMapperAddress(newMapparAddress);
+      const changeMapperAddress = await BridgeContract.connect(multisigAddress).changeMapperAddress(newMapparAddress);
       expect(changeMapperAddress).to.not.be.reverted;
 
       const newMapperAddress = await BridgeContract.Mapper();
@@ -1263,7 +1919,7 @@ describe("Bridge", function () {
       await expect(changeMapperAddress)
           .to.emit(BridgeContract, "MapperAddressChanged")
           .withArgs(
-              deployer.address,
+              multisigAddress.address,
               oldMapperAddress,
               newMapperAddress
           );
@@ -1273,20 +1929,20 @@ describe("Bridge", function () {
       const oldMapperAddress = await BridgeContract.Mapper();
       expect(oldMapperAddress).to.be.equal(await MapperContract.getAddress());
       await expect(
-          BridgeContract.changeMapperAddress(user3)
+          BridgeContract.connect(multisigAddress).changeMapperAddress(user2)
       ).to.be.revertedWith("Bridge: New address does not support IMapper");
     });
 
     it("Should fail to changeMapperAddress with zero _newMapperAddress", async function () {
       await expect(
-          BridgeContract.changeMapperAddress(ZeroAddress)
+          BridgeContract.connect(multisigAddress).changeMapperAddress(ZeroAddress)
       ).to.be.revertedWith("Bridge: Address must be not equal zero");
     });
 
-    it("Should fail changeMapperAddress if sender is NOT Owner", async function () {
+    it("Should fail changeMapperAddress if sender has NOT MULTISIG role", async function () {
       await expect(
-          BridgeContract.connect(user1).changeMapperAddress(user3)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+          BridgeContract.connect(user1).changeMapperAddress(user2)
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
     });
 
   });
@@ -1305,7 +1961,7 @@ describe("Bridge", function () {
           depositMapInfo.originTokenAddress
       );
       expect(depositAllowedTokens).to.be.equal(bridgeParams.bridgeParams.mapId);
-      await MapperContract.removeMapping(bridgeParams.bridgeParams.mapId);
+      await MapperContract.connect(emergencyAddress).removeMapping(bridgeParams.bridgeParams.mapId);
       let newMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
       expect(newMapInfo.targetChainId).to.be.equal(0);
@@ -1321,24 +1977,24 @@ describe("Bridge", function () {
     it("Should be able to removeMapping for withdraw", async function () {
       await registerMappings();
       const withdrawParams = await setBridgeParams(typesMix.None_Unlock);
-      const ECDSA = await ECDSAFixture(undefined, withdrawParams);
+      await ECDSAFixture(undefined, withdrawParams);
 
       let withdrawMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(withdrawParams.bridgeParams.mapId);
       expect(withdrawMapInfo.originChainId).to.be.equal(GlobalConfig.WHITECHAIN_DEVNET_ID);
       expect(withdrawMapInfo.targetChainId).to.be.equal(GlobalConfig.HARDHAT_ID);
 
-      let mapId = await MapperContract.withdrawAllowedTokens(
+      let mapId = await MapperContract.connect(multisigAddress).withdrawAllowedTokens(
           withdrawMapInfo.originChainId,
           withdrawMapInfo.targetTokenAddress
       );
       expect(mapId).to.be.equal(withdrawParams.bridgeParams.mapId);
 
-      await MapperContract.removeMapping(withdrawParams.bridgeParams.mapId);
+      await MapperContract.connect(emergencyAddress).removeMapping(withdrawParams.bridgeParams.mapId);
 
       let newMapInfo: IMapper.MapInfo = await MapperContract.mapInfo(withdrawParams.bridgeParams.mapId);
       expect(newMapInfo.targetChainId).to.be.equal(0);
 
-      let newMapId = await MapperContract.withdrawAllowedTokens(
+      let newMapId = await MapperContract.connect(multisigAddress).withdrawAllowedTokens(
           withdrawMapInfo.targetChainId,
           withdrawMapInfo.originTokenAddress
       );
@@ -1346,15 +2002,15 @@ describe("Bridge", function () {
       expect(newMapId).to.be.equal(0);
     });
 
-    it("Should fail removeMapping if sender is NOT Owner", async function () {
+    it("Should fail removeMapping if sender has NOT MULTISIG role", async function () {
       await expect(
           MapperContract.connect(user1).removeMapping(1)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${EMERGENCY_ROLE}`);
     });
 
     it("Should fail removeMapping if mapCounter < mapId", async function () {
       await expect(
-          MapperContract.removeMapping(failMapId)
+          MapperContract.connect(emergencyAddress).removeMapping(failMapId)
       ).to.be.revertedWith("Mapper: MapCounter must be greater than or equal mapId");
     });
 
@@ -1372,10 +2028,10 @@ describe("Bridge", function () {
       );
       expect(mapId).to.be.equal(bridgeParams.bridgeParams.mapId);
 
-      await MapperContract.removeMapping(bridgeParams.bridgeParams.mapId);
+      await MapperContract.connect(emergencyAddress).removeMapping(bridgeParams.bridgeParams.mapId);
 
       await expect(
-          MapperContract.removeMapping(bridgeParams.bridgeParams.mapId)
+          MapperContract.connect(emergencyAddress).removeMapping(bridgeParams.bridgeParams.mapId)
       ).to.be.revertedWith("Mapper: Invalid mapId");
 
     });
@@ -1413,17 +2069,17 @@ describe("Bridge", function () {
     it("Should be able to depositCoins", async function () {
       const amount = 1000000n;
 
-      const depositCoinsTransaction = await BridgeContract.depositCoins({ value: amount });
+      const depositCoinsTransaction = await BridgeContract.connect(emergencyAddress).depositCoins({ value: amount });
 
       await expect(depositCoinsTransaction)
           .to.emit(BridgeContract, "CoinsDeposited")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               amount,
           );
 
       await expect(depositCoinsTransaction).to.changeEtherBalances(
-         [deployer.address, BridgeContract],
+         [emergencyAddress.address, BridgeContract],
          [-amount, amount],
       );
 
@@ -1431,15 +2087,15 @@ describe("Bridge", function () {
 
     it("Should fail depositCoins if amount is zero", async function () {
       await expect(
-        BridgeContract.depositCoins()
+        BridgeContract.connect(emergencyAddress).depositCoins()
       ).to.be.revertedWith("Bridge: Cannot be zero");
     });
 
-    it("Should fail depositCoins if sender is NOT Owner", async function () {
+    it("Should fail depositCoins if sender has NOT EMERGENCY role", async function () {
       const amount = 1000000n;
       await expect(
           BridgeContract.connect(user1).depositCoins({ value: amount })
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${EMERGENCY_ROLE}`);
     });
 
   });
@@ -1458,27 +2114,33 @@ describe("Bridge", function () {
       const tokenContract = await hre.ethers.getContractAt(
           GlobalConfig.EXAMPLE_TOKEN_CONTRACT_NAME,
           targetTokenAddress
+      ) as any;
+      
+      await tokenContract.transfer(
+        emergencyAddress.address,
+        amount
       );
-      let transactionResponse = await tokenContract.approve(
+
+      await tokenContract.connect(emergencyAddress).approve(
           await BridgeContract.getAddress(),
           amount
       );
 
-      const depositTokensTransaction = await BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount);
+      const depositTokensTransaction = await BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount);
 
       const targetToken = bytes32ToAddress(mapInfo.targetTokenAddress);
 
       await expect(depositTokensTransaction)
           .to.emit(BridgeContract, "TokensDeposited")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               targetToken,
               amount,
           );
 
       await expect(depositTokensTransaction).to.changeTokenBalances(
           tokenContract,
-         [deployer.address, BridgeContract],
+         [emergencyAddress.address, BridgeContract],
          [-amount, amount],
       );
 
@@ -1489,9 +2151,9 @@ describe("Bridge", function () {
       await registerMappings();
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock);
 
-      let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
       await expect(
-          BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount)
       ).to.be.revertedWith("Bridge: Cannot be zero");
     });
 
@@ -1500,9 +2162,9 @@ describe("Bridge", function () {
       await registerMappings();
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
 
-      let mapInfo: IMapper.MapInfo = await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await MapperContract.mapInfo(bridgeParams.bridgeParams.mapId);
       await expect(
-          BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount)
       ).to.be.revertedWith("Bridge: Deposit allowed only for token mappings");
     });
 
@@ -1512,9 +2174,9 @@ describe("Bridge", function () {
       await registerMappings(undefined, undefined, mapperBrokenContract, true);
       const bridgeParams = await setBridgeParams(typesMix.Lock_None, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
 
-      let mapInfo: IMapper.MapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
       await expect(
-          BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount)
       ).to.be.revertedWith("Bridge: DepositType must be equal to None");
     });
 
@@ -1524,24 +2186,24 @@ describe("Bridge", function () {
       await registerMappings(undefined, undefined, mapperBrokenContract, true);
       const bridgeParams = await setBridgeParams(typesMix.None_None, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
 
-      let mapInfo: IMapper.MapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
       await expect(
-          BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount)
       ).to.be.revertedWith("Bridge: TargetTokenAddress must be not equal zero");
     });
 
-    it("Should fail depositTokens if sender is NOT Owner", async function () {
+    it("Should fail depositTokens if sender has NOT EMERGENCY role", async function () {
       const amount = 100000n;
       let mapperBrokenContract = await createMapperBrokenContract();
       await registerMappings(undefined, undefined, mapperBrokenContract, true);
       const bridgeParams = await setBridgeParams(typesMix.None_None, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
 
-      let mapInfo: IMapper.MapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
 
       await expect(
           BridgeContract.connect(user1).depositTokens(bridgeParams.bridgeParams.mapId, amount)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${EMERGENCY_ROLE}`);
     });
 
     it("Should fail depositTokens with isAllowed == false", async function () {
@@ -1549,9 +2211,9 @@ describe("Bridge", function () {
       let mapperBrokenContract = await createMapperBrokenContract();
       await registerMappings(false, undefined, mapperBrokenContract, true);
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, undefined, undefined, undefined, undefined, undefined, true);
-      let mapInfo: IMapper.MapInfo = await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
+      await mapperBrokenContract.mapInfo(bridgeParams.bridgeParams.mapId);
       await expect(
-          BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount)
       ).to.be.revertedWith("Bridge: IsAllowed must be true");
     });
 
@@ -1563,13 +2225,12 @@ describe("Bridge", function () {
           [GlobalConfig.ETHER_1 * 100_000_000n]
       );
       let amount = 22n;
-      let gasAmount = 200n;
-      let transactionResponse = await contract.approve(
+      await contract.approve(
           await BridgeContract.getAddress(),
           amount
       );
       await registerMappings();
-      await MapperContract.registerMapping({
+      await MapperContract.connect(multisigAddress).registerMapping({
         originChainId: BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID),
         targetChainId: BigInt(GlobalConfig.HARDHAT_ID),
         depositType: IMapper.DepositType.None,
@@ -1584,7 +2245,7 @@ describe("Bridge", function () {
       let mapId = await MapperContract.mapCounter();
 
       await expect(
-          BridgeContract.depositTokens(mapId, amount)
+          BridgeContract.connect(emergencyAddress).depositTokens(mapId, amount)
       ).to.be.revertedWith("ReentrancyGuard: reentrant call");
 
     });
@@ -1601,21 +2262,26 @@ describe("Bridge", function () {
       const tokenContract = await hre.ethers.getContractAt(
           GlobalConfig.EXAMPLE_TOKEN_CONTRACT_NAME,
           targetTokenAddress
+      ) as any;
+
+      await tokenContract.transfer(
+        emergencyAddress.address,
+        amount
       );
 
-      let transactionResponse = await tokenContract.approve(
-          await BridgeContract.getAddress(),
-          amount
+      await tokenContract.connect(emergencyAddress).approve(
+        await BridgeContract.getAddress(),
+        amount
       );
 
-      const depositTokensTransaction = await BridgeContract.depositTokens(bridgeParams.bridgeParams.mapId, amount);
+      const depositTokensTransaction = await BridgeContract.connect(emergencyAddress).depositTokens(bridgeParams.bridgeParams.mapId, amount);
 
       const targetToken = bytes32ToAddress(mapInfo.targetTokenAddress);
 
       await expect(depositTokensTransaction)
           .to.emit(tokenContract, "Transfer")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               await BridgeContract.getAddress(),
               amount
           );
@@ -1623,14 +2289,14 @@ describe("Bridge", function () {
       await expect(depositTokensTransaction)
           .to.emit(BridgeContract, "TokensDeposited")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               targetToken,
               amount,
           );
 
       await expect(depositTokensTransaction).to.changeTokenBalances(
           tokenContract,
-          [deployer.address, BridgeContract],
+          [emergencyAddress.address, BridgeContract],
           [-amount, amount],
       );
 
@@ -1661,12 +2327,12 @@ describe("Bridge", function () {
       const gasAccumulated = await BridgeContract.gasAccumulated();
       expect(gasAccumulated).to.be.equal(gas);
 
-      const withdrawGasAccumulatedTransaction = await BridgeContract.withdrawGasAccumulated();
+      const withdrawGasAccumulatedTransaction = await BridgeContract.connect(emergencyAddress).withdrawGasAccumulated();
 
       await expect(withdrawGasAccumulatedTransaction)
           .to.emit(BridgeContract, "GasAccumulatedWithdrawn")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               gasAccumulated
           );
     });
@@ -1692,22 +2358,22 @@ describe("Bridge", function () {
       const gasAccumulated = await BridgeContract.gasAccumulated();
       expect(gasAccumulated).to.be.equal(gas);
 
-      const withdrawGasAccumulatedTransaction = await BridgeContract.withdrawGasAccumulated();
+      const withdrawGasAccumulatedTransaction = await BridgeContract.connect(emergencyAddress).withdrawGasAccumulated();
 
       await expect(withdrawGasAccumulatedTransaction)
           .to.emit(BridgeContract, "GasAccumulatedWithdrawn")
           .withArgs(
-              deployer.address,
+              emergencyAddress.address,
               gasAccumulated
           );
 
       await expect(
-          BridgeContract.withdrawGasAccumulated()
+          BridgeContract.connect(emergencyAddress).withdrawGasAccumulated()
       ).to.be.revertedWith("Bridge: Cannot be zero");
 
     });
 
-    it("Should fail withdrawGasAccumulated if sender is NOT Owner", async function () {
+    it("Should fail withdrawGasAccumulated if sender has NOT EMERGENCY role", async function () {
       await registerMappings();
       const bridgeParams1: {
         bridgeParams: IBridge.BridgeParams;
@@ -1717,7 +2383,7 @@ describe("Bridge", function () {
 
       await expect(
           BridgeContract.connect(user1).withdrawGasAccumulated()
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${EMERGENCY_ROLE}`);
 
     });
 
@@ -1732,7 +2398,7 @@ describe("Bridge", function () {
       ]);
 
       await expect(
-          BridgeContract.withdrawGasAccumulated()
+          BridgeContract.connect(emergencyAddress).withdrawGasAccumulated()
       ).to.be.revertedWith("Bridge: Coins balance must be greater or equal gasAccumulated");
 
     });
@@ -1748,15 +2414,13 @@ describe("Bridge", function () {
       const BridgeWrapperFactory = await hre.ethers.getContractFactory(GlobalConfig.TEST_UTILS_ROUTE + 'wrappers/BridgeWrapper.sol:BridgeWrapper');
       const BridgeWrapper = await BridgeWrapperFactory.deploy();
 
-      await BridgeContract.transferOwnership(await BridgeWrapper.getAddress());
-      await BridgeWrapper.acceptOwnership(await BridgeContract.getAddress());
+      await BridgeContract.connect(multisigAddress).grantRole(EMERGENCY_ROLE, await BridgeWrapper.getAddress());
 
       await expect(
           BridgeWrapper.withdrawGasAccumulatedWrapper(await BridgeContract.getAddress())
       ).to.be.revertedWith("Bridge: Gas accumulated withdrawal failed");
 
     });
-
 
     async function createBridgeReentrancyAttackContract() {
       const contract = await coreDeployment.deployContract(
@@ -1768,9 +2432,8 @@ describe("Bridge", function () {
 
       let BridgeReentrancyAttackContract: any = contract as unknown as BridgeReentrancyAttack;
 
-      let changeMapperAddress = await BridgeContract.transferOwnership(await BridgeReentrancyAttackContract.getAddress());
-      await BridgeReentrancyAttackContract.acceptOwnership(await BridgeContract.getAddress());
-      expect(changeMapperAddress).to.not.be.reverted;
+      let grantRole = await BridgeContract.connect(multisigAddress).grantRole(EMERGENCY_ROLE, await BridgeReentrancyAttackContract.getAddress());
+      expect(grantRole).to.not.be.reverted;
       return BridgeReentrancyAttackContract;
     }
 
@@ -1834,7 +2497,7 @@ describe("Bridge", function () {
 
       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
 
-      const withdrawTokenLiquidityTransaction = await BridgeContract.withdrawTokenLiquidity({
+      const withdrawTokenLiquidityTransaction = await BridgeContract.connect(multisigAddress).withdrawTokenLiquidity({
           tokenAddress: mapInfo2.targetTokenAddress,
           recipientAddress: user1.address,
           amount: BigInt(totalAmount),
@@ -1857,7 +2520,7 @@ describe("Bridge", function () {
           );
     });
 
-    it("Should fail withdrawTokenLiquidity if sender is NOT Owner", async function () {
+    it("Should fail withdrawTokenLiquidity if sender has NOT MULTISIG role", async function () {
       await registerMappings();
       const bridgeParams1: { bridgeParams: IBridge.BridgeParams; gasAmount: bigint; } = await setBridgeParams();
       await bridgeTokens(bridgeParams1);
@@ -1892,7 +2555,7 @@ describe("Bridge", function () {
           amount: BigInt(totalAmount),
           useTransfer: mapInfo2.useTransfer,
         })
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
 
     });
 
@@ -1925,7 +2588,7 @@ describe("Bridge", function () {
       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
 
       await expect(
-          BridgeContract.withdrawTokenLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawTokenLiquidity({
             tokenAddress: mapInfo2.targetTokenAddress,
             recipientAddress: user1.address,
             amount: BigInt(0),
@@ -1964,7 +2627,7 @@ describe("Bridge", function () {
       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
 
       await expect(
-          BridgeContract.withdrawTokenLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawTokenLiquidity({
             tokenAddress: hre.ethers.zeroPadValue(ZeroAddress, 32),
             recipientAddress: user1.address,
             amount: BigInt(totalAmount),
@@ -2003,7 +2666,7 @@ describe("Bridge", function () {
       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
 
       await expect(
-          BridgeContract.withdrawTokenLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawTokenLiquidity({
             tokenAddress: mapInfo2.targetTokenAddress,
             recipientAddress: ZeroAddress,
             amount: BigInt(totalAmount),
@@ -2021,7 +2684,6 @@ describe("Bridge", function () {
           [GlobalConfig.ETHER_1 * 100_000_000n]
       );
       let amount = 22n;
-      let gasAmount = 200n;
       let mintTransaction = await contract.mint(
           await BridgeContract.getAddress(),
           amount * 100n
@@ -2029,13 +2691,13 @@ describe("Bridge", function () {
 
       await mintTransaction.wait();
 
-      let transactionResponse = await contract.approve(
+      await contract.approve(
           await BridgeContract.getAddress(),
           amount
       );
 
       await registerMappings();
-      await MapperContract.registerMapping({
+      await MapperContract.connect(multisigAddress).registerMapping({
         originChainId: BigInt(GlobalConfig.WHITECHAIN_DEVNET_ID),
         targetChainId: BigInt(GlobalConfig.HARDHAT_ID),
         depositType: IMapper.DepositType.None,
@@ -2050,7 +2712,7 @@ describe("Bridge", function () {
       let mapId = await MapperContract.mapCounter();
       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId);
       await expect(
-          BridgeContract.withdrawTokenLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawTokenLiquidity({
             tokenAddress: hre.ethers.zeroPadValue(await contract.getAddress(), 32),
             recipientAddress: user1.address,
             amount: amount,
@@ -2087,9 +2749,9 @@ describe("Bridge", function () {
            mapInfo.originTokenAddress
        );
        mapId2 = 6;
-       const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
+       await MapperContract.mapInfo(mapId2);
 
-       const withdrawCoinLiquidityTransaction = await BridgeContract.withdrawCoinLiquidity({
+       const withdrawCoinLiquidityTransaction = await BridgeContract.connect(multisigAddress).withdrawCoinLiquidity({
          recipientAddress: user1.address,
          amount: totalAmount,
        });
@@ -2107,7 +2769,7 @@ describe("Bridge", function () {
            );
      });
 
-    it("Should fail withdrawCoinLiquidity if sender is NOT Owner", async function () {
+    it("Should fail withdrawCoinLiquidity if sender has NOT MULTISIG role", async function () {
       await registerMappings();
       const bridgeParams1: { bridgeParams: IBridge.BridgeParams; gasAmount: bigint; } = await setBridgeParams();
       await bridgeTokens(bridgeParams1);
@@ -2133,14 +2795,14 @@ describe("Bridge", function () {
           mapInfo.originTokenAddress
       );
 
-      const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
+      await MapperContract.mapInfo(mapId2);
 
       await expect(
           BridgeContract.connect(user1).withdrawCoinLiquidity({
             recipientAddress: user1.address,
             amount: totalAmount,
           })
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
 
     });
 
@@ -2170,10 +2832,10 @@ describe("Bridge", function () {
           mapInfo.originTokenAddress
       );
 
-      const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
+      await MapperContract.mapInfo(mapId2);
 
       await expect(
-          BridgeContract.withdrawCoinLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawCoinLiquidity({
             recipientAddress: user1.address,
             amount: BigInt(0),
           })
@@ -2207,10 +2869,10 @@ describe("Bridge", function () {
           mapInfo.originTokenAddress
       );
 
-      const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
+      await MapperContract.mapInfo(mapId2);
 
       await expect(
-          BridgeContract.withdrawCoinLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawCoinLiquidity({
             recipientAddress: ZeroAddress,
             amount: totalAmount,
           })
@@ -2241,10 +2903,8 @@ describe("Bridge", function () {
           mapInfo.originTokenAddress
       );
       mapId2 = 6;
-      const mapInfo2: IMapper.MapInfo = await MapperContract.mapInfo(mapId2);
-
       await expect(
-          BridgeContract.withdrawCoinLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawCoinLiquidity({
             recipientAddress: user1.address,
             amount: balanceBefore + 1n,
           })
@@ -2258,14 +2918,14 @@ describe("Bridge", function () {
 
       const bridgeParams = await setBridgeParams(typesMix.None_Unlock, undefined, undefined, true);
 
-      const mapInfo = await setMapInfo(Number(bridgeParams.bridgeParams.mapId), false, true, true);
+      await setMapInfo(Number(bridgeParams.bridgeParams.mapId), false, true, true);
 
       const balanceBefore = await hre.ethers.provider.getBalance(BridgeContract.target);
 
       expect(balanceBefore).to.be.equal(bridgeParams.bridgeParams.amount + bridgeParams.gasAmount);
 
       await expect(
-          BridgeContract.withdrawCoinLiquidity({
+          BridgeContract.connect(multisigAddress).withdrawCoinLiquidity({
             recipientAddress: MapperContract.target,
             amount: bridgeParams.bridgeParams.amount,
           })
@@ -2287,13 +2947,98 @@ describe("Bridge", function () {
       const bridgeParams3 = await setBridgeParams(typesMix.Lock_None, undefined, undefined, true);
       await bridgeTokens(bridgeParams3);
 
-      await BridgeContract.transferOwnership(await WCLReentrancyAttackContract.getAddress());
-      await WCLReentrancyAttackContract.acceptOwnership(await BridgeContract.getAddress());
+      await BridgeContract.connect(multisigAddress).grantRole(MULTISIG_ROLE, await WCLReentrancyAttackContract.getAddress());
 
       await expect(
           WCLReentrancyAttackContract.attack()
       ).to.be.revertedWith("Bridge: Failed to send coins");
 
+    });
+
+  });
+
+  describe("RELAYER_ROLE management", async function () {
+
+    it("Should allow MULTISIG to grant RELAYER_ROLE", async function () {
+      expect(await BridgeContract.hasRole(RELAYER_ROLE, user3.address)).to.be.false;
+
+      await expect(
+          BridgeContract.connect(multisigAddress).grantRole(RELAYER_ROLE, user3.address)
+      ).to.emit(BridgeContract, "RoleGranted")
+          .withArgs(RELAYER_ROLE, user3.address, multisigAddress.address);
+
+      expect(await BridgeContract.hasRole(RELAYER_ROLE, user3.address)).to.be.true;
+    });
+
+    it("Should fail grantRole if sender has NOT MULTISIG role", async function () {
+      const DEFAULT_ADMIN_ROLE = await BridgeContract.DEFAULT_ADMIN_ROLE();
+      await expect(
+          BridgeContract.connect(user1).grantRole(RELAYER_ROLE, user3.address)
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${DEFAULT_ADMIN_ROLE}`);
+    });
+
+    it("Should allow MULTISIG to revoke RELAYER_ROLE", async function () {
+      // First grant the role
+      await BridgeContract.connect(multisigAddress).grantRole(RELAYER_ROLE, user3.address);
+      expect(await BridgeContract.hasRole(RELAYER_ROLE, user3.address)).to.be.true;
+
+      // Then revoke it
+      await expect(
+          BridgeContract.connect(multisigAddress).revokeRole(RELAYER_ROLE, user3.address)
+      ).to.emit(BridgeContract, "RoleRevoked")
+          .withArgs(RELAYER_ROLE, user3.address, multisigAddress.address);
+
+      expect(await BridgeContract.hasRole(RELAYER_ROLE, user3.address)).to.be.false;
+    });
+
+    it("Should fail revokeRole if sender has NOT MULTISIG role", async function () {
+      // First grant the role
+      await BridgeContract.connect(multisigAddress).grantRole(RELAYER_ROLE, user3.address);
+
+      // Try to revoke without MULTISIG role
+      const DEFAULT_ADMIN_ROLE = await BridgeContract.DEFAULT_ADMIN_ROLE();
+      await expect(
+          BridgeContract.connect(user1).revokeRole(RELAYER_ROLE, user3.address)
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${DEFAULT_ADMIN_ROLE}`);
+    });
+
+
+  })
+
+  describe("setDailyLimit", async function () {
+
+    it("Should allow MULTISIG to set and update daily limits", async function () {
+      const token = hre.ethers.ZeroHash;
+      const originalLimit = 1000n;
+      const newLimit = 2000n;
+
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(token, relayerAddress.address, originalLimit)
+      ).to.emit(BridgeContract, "DailyLimitSet")
+          .withArgs(token, relayerAddress.address, originalLimit, 0n);
+
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(token, relayerAddress.address, newLimit)
+      ).to.emit(BridgeContract, "DailyLimitSet")
+          .withArgs(token, relayerAddress.address, newLimit, originalLimit);
+    });
+
+    it("Should fail setDailyLimit if sender has NOT MULTISIG role", async function () {
+      await expect(
+          BridgeContract.connect(user1).setDailyLimit(hre.ethers.ZeroHash, relayerAddress.address, 1000n)
+      ).to.be.revertedWith(`AccessControl: account ${user1.address.toLowerCase()} is missing role ${MULTISIG_ROLE}`);
+    });
+
+    it("Should fail setDailyLimit if relayer does not exist", async function () {
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(hre.ethers.ZeroHash, user3.address, 1000n)
+      ).to.be.revertedWith("Bridge: Relayer does not exist");
+    });
+
+    it("Should fail setDailyLimit with zero relayer address", async function () {
+      await expect(
+          BridgeContract.connect(multisigAddress).setDailyLimit(hre.ethers.ZeroHash, ZeroAddress, 1000n)
+      ).to.be.revertedWith("Bridge: Address must be not equal zero");
     });
 
   });

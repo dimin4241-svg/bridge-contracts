@@ -62,6 +62,22 @@ This event is triggered when the &#x60;dropToken&#x60; function successfully del
 | mapId | uint256 | The unique identifier of the mapping that was deleted. |
 
 ## Structs
+#### InitParams
+
+Struct for initializing the Mapper contract.
+
+```solidity
+struct InitParams {
+  address emergencyAddress;
+  address multisigAddress;
+}
+```
+
+| Name | Description |
+| ---- | ----------- |
+| emergencyAddress | The address of the emergency role. |
+| multisigAddress | The address of the multisig role. |
+
 #### MapInfo
 
 Struct containing detailed information about a token mapping.
@@ -103,7 +119,7 @@ function enableMapping(uint256 mapId) external
 
 Updates the restriction status of a token.
 Sets the token mapping to allowed.
-Only the contract owner can call this function.
+Only the MULTISIG role can call this function.
 Emits an {EnabledMapping} event on success.
 
 | Name | Type | Description |
@@ -119,7 +135,7 @@ function disableMapping(uint256 mapId) external
 
 Revokes a token mapping.
 Sets the token mapping to disallowed.
-Only the contract owner can call this function.
+Only the EMERGENCY role can call this function.
 Emits a {DisabledMapping} event on success.
 
 | Name | Type | Description |
@@ -137,7 +153,7 @@ Adds a new token mapping.
 Registers a new token mapping that defines a one‑directional connection between chains.
 Each mapping is created specifically for either deposits or withdrawals.
 For the bridge coin, the address of the wrapped token must be provided in the parameters.
-Only the contract owner can call this function.
+Only the MULTISIG role can call this function.
 Emits an {RegisteredMapping} event on success.
 
 | Name | Type | Description |
@@ -152,7 +168,7 @@ function removeMapping(uint256 mapId) external
 **Selector**: `0x0e71a236`
 
 Deletes mapping information for a given mapId.
-Only the contract owner can call this function.
+Only the EMERGENCY role can call this function.
 The function ensures that the provided mapId is valid and belongs to the current chain.
 Depending on the deposit and withdraw types, it removes allowed token mappings.
 

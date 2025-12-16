@@ -85,6 +85,7 @@ export async function deployUUPSProxy(
     isLocalhost: boolean,
     nameContract: string,
     deployer: SignerWithAddress,
+    initializeFn: string,
     args: any = {}
 ) {
   let contractFactory: ContractFactory = await _startDeployment(nameContract, !isLocalhost);
@@ -94,16 +95,14 @@ export async function deployUUPSProxy(
       [
         args
       ],
-      { initializer: false },
+      { initializer: initializeFn },
   );
 
   await contract.waitForDeployment();
 
-  let initialize = await contract.initialize(args);
-
   await _endDeployment(nameContract, contract, deployer, !isLocalhost);
 
-  return { contract, contractFactory, initialize };
+  return { contract, contractFactory };
 }
 
 export async function deployUUPSProxyWithCharge(

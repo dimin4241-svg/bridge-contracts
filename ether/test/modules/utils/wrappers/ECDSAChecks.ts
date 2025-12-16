@@ -1,7 +1,6 @@
 import hre from "hardhat";
 import {SignerWithAddress} from "@nomicfoundation/hardhat-ethers/signers";
 import chai, {expect} from "chai";
-import {ContractFactory, ZeroAddress} from "ethers";
 import chaiAsPromised from "chai-as-promised";
 import * as ethUtil from "ethereumjs-util";
 import * as GlobalConfig from "../../../utils/GlobalConfig";
@@ -12,7 +11,6 @@ chai.use(chaiAsPromised);
 describe('ECDSAChecks', function () {
 
     let ECDSAChecksWrapper: any;
-    let ECDSAChecksWrapperFactory: ContractFactory;
 
     let deployer: SignerWithAddress;
     let user0: SignerWithAddress;
@@ -22,7 +20,7 @@ describe('ECDSAChecks', function () {
 
     beforeEach(async function () {
         [deployer, user0, user1, user2] = await hre.ethers.getSigners();
-        ({ECDSAChecksWrapper, ECDSAChecksWrapperFactory} = await deployContractsFixture());
+        ({ECDSAChecksWrapper} = await deployContractsFixture());
 
         nowTime = await time.latest();
     });
@@ -51,61 +49,15 @@ describe('ECDSAChecks', function () {
     }
 
     describe('validateECDSAWrapper', function () {
-        it('Should pay successfully with valid arguments', async function () {
+        it('Should recover the signer address from a valid ECDSA signature', async function () {
             const {_hash, r, s, signerAddress, _deadline, v} = await ECDSAFixture();
-            ECDSAChecksWrapper.validateECDSAWrapper([
-                _hash,
-                r,
-                s,
-                signerAddress,
-                _deadline,
-                v
-            ]);
-        });
-
-        it('Should fail to initialize with zero address signerAddress', async function () {
-            const {_hash, r, s, signerAddress, _deadline, v} = await ECDSAFixture();
-            await expect(
-                ECDSAChecksWrapper.validateECDSAWrapper([
-                    _hash,
-                    r,
-                    s,
-                    ZeroAddress,
-                    _deadline,
-                    v
-                ])
-            ).to.be.revertedWith("ECDSAChecks: Address must be not equal zero");
-        });
-
-        it('Should fail to initialize with _deadline < block_.timestamp', async function () {
-            let nowTime_ = await time.latest() - 1;
-            const {_hash, r, s, signerAddress, _deadline, v} = await ECDSAFixture(
-                nowTime_
-            );
-            await expect(
-                ECDSAChecksWrapper.validateECDSAWrapper([
-                    _hash,
-                    r,
-                    s,
-                    signerAddress,
-                    _deadline,
-                    v
-                ])
-            ).to.be.revertedWith("ECDSAChecks: Signature Expired");
-        });
-
-        it('Should fail to initialize with signer != signerAddress', async function () {
-            const {_hash, r, s, signerAddress, _deadline, v} = await ECDSAFixture();
-            await expect(
-                ECDSAChecksWrapper.validateECDSAWrapper([
-                    _hash,
-                    r,
-                    s,
-                    user0.address,
-                    _deadline,
-                    v
-                ])
-            ).to.be.revertedWith("ECDSAChecks: invalid signature");
+            const signer = await ECDSAChecksWrapper.recoverSignerWrapper({
+                hash: _hash,
+                r: r,
+                s: s,
+                v: v
+            });
+            expect(signer).to.equal(signerAddress);
         });
     });
 });
