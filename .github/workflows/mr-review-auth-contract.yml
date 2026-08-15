@@ -1,0 +1,30 @@
+name: MyReviews review auth integration contract
+on:
+  push:
+    branches: [bb/mr-review-auth-20260815]
+    paths: ['.github/workflows/mr-review-auth-contract.yml']
+permissions: {}
+jobs:
+  map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Extract only relevant production client contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re,urllib.request
+          U='https://myreviews.dev/static/js/main.03809151.js'
+          H={'User-Agent':'Mozilla/5.0 Standoff365-MyReviews-review-auth-dimion4231','Accept':'application/javascript'}
+          with urllib.request.urlopen(urllib.request.Request(U,headers=H),timeout=25) as r:
+              s=r.read(14000000).decode('utf-8','replace'); print('BUNDLE',r.status,len(s))
+          for needle in ['add-auth?id=', 'add-mail-auth?id=', 'retry-mail?id=', 'confirm-mail?id=', 'pin-switch?id=', 'hidden-switch?id=', 'get-data-csv', 'download-csv']:
+              pos=0;count=0
+              while count<5:
+                  p=s.find(needle,pos)
+                  if p<0:break
+                  ctx=' '.join(s[max(0,p-1800):min(len(s),p+5200)].split())
+                  ctx=re.sub(r'Authorization:`[^`]{1,220}`','Authorization:[REDACTED]',ctx)
+                  ctx=re.sub(r'(["\'])([A-Za-z0-9+/=_-]{120,})\1',lambda m:m.group(1)+'[OPAQUE]'+m.group(1),ctx)
+                  print('CTX',needle,'at',p,ctx[:7000]);pos=p+len(needle);count+=1
+          PY
